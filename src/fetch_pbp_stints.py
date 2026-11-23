@@ -33,7 +33,9 @@ def _client(game_id: str) -> Client:
     cached = ((d / "pbp" / f"live_{game_id}.json").exists()
               and (d / "game_details" / f"live_{game_id}.json").exists())
     source = "file" if cached else "web"
-    d.mkdir(parents=True, exist_ok=True)
+    # pbpstats writes its cache into these subfolders but doesn't create them
+    for sub in ("pbp", "game_details", "schedule"):
+        (d / sub).mkdir(parents=True, exist_ok=True)
     return Client({
         "dir": str(d),
         "Boxscore": {"source": source, "data_provider": "live"},
