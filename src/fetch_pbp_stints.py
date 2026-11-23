@@ -72,18 +72,21 @@ def extract_possessions(game_id: str, home_team_id: int, away_team_id: int) -> t
     Returns (possession records, diagnostics dict).
     """
     game = _client(game_id).Game(game_id)
-    records = []
-    diag = {"possessions": 0, "skipped": 0, "skipped_home_pts": 0, "skipped_away_pts": 0,
+    diag = {"possessions": 0, "filled": 0, "first_in_period_missing": 0,
+            "skipped": 0, "skipped_home_pts": 0, "skipped_away_pts": 0,
             "counted_home_pts": 0, "counted_away_pts": 0, "final_home": 0, "final_away": 0}
     prev_period, prev_remaining = None, None
     score = (0, 0)  # running (home, away) score
 
+    # Pass 1: timing, points, and whatever lineup info each possession has
+    rows = []
     for poss in game.possessions.items:
         if not poss.events:
             continue
         diag["possessions"] += 1
         period = poss.events[0].period
-        if period != prev_period:
+        first_in_period = period != prev_period
+        if first_in_period:
             prev_period, prev_remaining = period, _period_length(period)
         end_remaining = float(poss.events[-1].seconds_remaining)
         seconds = max(prev_remaining - end_remaining, 0.0)
@@ -101,22 +104,65 @@ def extract_possessions(game_id: str, home_team_id: int, away_team_id: int) -> t
         diag["counted_home_pts"] += counted[home_team_id]
         diag["counted_away_pts"] += counted[away_team_id]
 
-        # Lineups at the start of the possession
-        players = poss.events[0].current_players
-        home = tuple(sorted(players.get(home_team_id, [])))
-        away = tuple(sorted(players.get(away_team_id, [])))
-        if len(home) != 5 or len(away) != 5:
-            diag["skipped"] += 1
-            diag["skipped_home_pts"] += home_pts
-            diag["skipped_away_pts"] += away_pts
-            continue
+        home = _lineup(poss.events, home_team_id)
+        away = _lineup(poss.events, away_team_id)
+        if first_in_period and (home is None or away is None):
+            diag["first_in_period_missing"] += 1
+        rows.append({"period": period, "offense": poss.offense_team_id, "seconds": seconds,
+                     "home_pts": home_pts, "away_pts": away_pts, "home": home, "away": away})
 
+    # Pass 2: fill missing lineups from the nearest possession in the same
+    # period that has a full lineup for that team (next one first, since
+    # missing data is usually at the start of a period before any subs).
+    for side in ("home", "away"):
+        for i, r in enumerate(rows):
+            if r[side] is None:
+                r[side] = _nearest_lineup(rows, i, side)
+                if r[side] is not None:
+                    r[f"{side}_filled"] = True
+
+    records = []
+    for r in rows:
+        if r.get("home_filled") or r.get("away_filled"):
+            diag["filled"] += 1
+        if r["home"] is None or r["away"] is None:
+            diag["skipped"] += 1
+            diag["skipped_home_pts"] += r["home_pts"]
+            diag["skipped_away_pts"] += r["away_pts"]
+            continue
         records.append(PossessionRecord(
-            period=period, offense_team_id=poss.offense_team_id,
-            home_players=home, away_players=away, seconds=seconds,
-            home_pts=home_pts, away_pts=away_pts))
+            period=r["period"], offense_team_id=r["offense"],
+            home_players=r["home"], away_players=r["away"], seconds=r["seconds"],
+            home_pts=r["home_pts"], away_pts=r["away_pts"]))
     diag["final_home"], diag["final_away"] = score
     return records, diag
+
+
+def _lineup(events, team_id: int):
+    """First full 5-man lineup for a team seen during the possession, else None."""
+    for ev in events:
+        try:
+            players = (ev.current_players or {}).get(team_id, [])
+        except Exception:  # noqa: BLE001 - pbpstats can raise on malformed events
+            continue
+        if len(players) == 5:
+            return tuple(sorted(players))
+    return None
+
+
+def _nearest_lineup(rows: list[dict], i: int, side: str):
+    period = rows[i]["period"]
+    for j in range(i + 1, len(rows)):              # look ahead first
+        if rows[j]["period"] != period:
+            break
+        if rows[j][side] is not None and not rows[j].get(f"{side}_filled"):
+            return rows[j][side]
+    for j in range(i - 1, -1, -1):                 # then look back
+        if rows[j]["period"] != period:
+            break
+        if rows[j][side] is not None and not rows[j].get(f"{side}_filled"):
+            return rows[j][side]
+    return None
 
 
 def possessions_to_stints(records: list[PossessionRecord], home_team_id: int) -> list[dict]:

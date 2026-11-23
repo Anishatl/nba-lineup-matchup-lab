@@ -33,7 +33,7 @@ def main():
         return
 
     header = (f"{'game':<12}{'official':>10}{'feed':>10}{'in stints':>11}"
-              f"{'skipped':>9}{'skip pts':>10}{'counted':>10}")
+              f"{'filled':>8}{'qtr-start':>11}{'skipped':>9}{'skip pts':>10}")
     print(header)
     print("-" * len(header))
     for game_id, home, away, off_h, off_a in games:
@@ -44,15 +44,17 @@ def main():
             f"{off_h}-{off_a}",
             "{}-{}".format(d["final_home"], d["final_away"]),
             f"{in_h}-{in_a}",
+            str(d["filled"]),
+            str(d["first_in_period_missing"]),
             "{}/{}".format(d["skipped"], d["possessions"]),
             "{}-{}".format(d["skipped_home_pts"], d["skipped_away_pts"]),
-            "{}-{}".format(d["counted_home_pts"], d["counted_away_pts"]),
         ]
         print(f"{game_id:<12}{cols[0]:>10}{cols[1]:>10}{cols[2]:>11}"
-              f"{cols[3]:>9}{cols[4]:>10}{cols[5]:>10}")
+              f"{cols[3]:>8}{cols[4]:>11}{cols[5]:>9}{cols[6]:>10}")
     print("\nofficial = box score | feed = final score in play-by-play | "
-          "in stints = points kept\nskipped = possessions dropped for incomplete "
-          "lineups | counted = old make-counting method")
+          "in stints = points kept\nfilled = possessions whose missing lineup was "
+          "filled from a neighbor | qtr-start = of those, first possession of a period\n"
+          "skipped = possessions still dropped | skip pts = points in them")
 
 
 if __name__ == "__main__":
