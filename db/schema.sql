@@ -1,0 +1,96 @@
+-- NBA Lineup & Matchup Lab: database schema
+-- Safe to run repeatedly (everything is IF NOT EXISTS).
+
+CREATE TABLE IF NOT EXISTS teams (
+    team_id       INTEGER PRIMARY KEY,
+    abbreviation  TEXT NOT NULL,
+    city          TEXT,
+    name          TEXT
+);
+
+CREATE TABLE IF NOT EXISTS players (
+    player_id      INTEGER PRIMARY KEY,
+    full_name      TEXT NOT NULL,
+    position       TEXT,
+    height_inches  INTEGER,
+    weight_lbs     INTEGER
+);
+
+-- Who played for which team each season (handles mid-season trades:
+-- a traded player gets one row per team).
+CREATE TABLE IF NOT EXISTS player_team_season (
+    player_id  INTEGER REFERENCES players(player_id),
+    team_id    INTEGER REFERENCES teams(team_id),
+    season     TEXT NOT NULL,
+    games      INTEGER,
+    minutes    NUMERIC,
+    PRIMARY KEY (player_id, team_id, season)
+);
+
+CREATE TABLE IF NOT EXISTS games (
+    game_id       TEXT PRIMARY KEY,
+    season        TEXT NOT NULL,
+    game_date     DATE,
+    home_team_id  INTEGER REFERENCES teams(team_id),
+    away_team_id  INTEGER REFERENCES teams(team_id),
+    home_pts      INTEGER,
+    away_pts      INTEGER
+);
+CREATE INDEX IF NOT EXISTS games_season_idx ON games (season);
+
+-- A stint = consecutive possessions in one period with the same 10 players
+-- on the floor. Player arrays are sorted so identical lineups group together.
+-- This is the input to the RAPM model.
+CREATE TABLE IF NOT EXISTS stints (
+    game_id        TEXT REFERENCES games(game_id),
+    stint_num      INTEGER,
+    period         INTEGER,
+    home_players   INTEGER[] NOT NULL,
+    away_players   INTEGER[] NOT NULL,
+    seconds        NUMERIC,
+    home_poss      INTEGER,   -- possessions where home team had the ball
+    away_poss      INTEGER,
+    home_pts       INTEGER,   -- points home team scored during the stint
+    away_pts       INTEGER,
+    PRIMARY KEY (game_id, stint_num)
+);
+CREATE INDEX IF NOT EXISTS stints_home_players_idx ON stints USING GIN (home_players);
+CREATE INDEX IF NOT EXISTS stints_away_players_idx ON stints USING GIN (away_players);
+
+-- Who guarded whom (NBA.com tracking, BoxScoreMatchupsV3).
+-- Input to the matchup model.
+CREATE TABLE IF NOT EXISTS matchups (
+    game_id           TEXT REFERENCES games(game_id),
+    off_team_id       INTEGER,
+    off_player_id     INTEGER,
+    def_player_id     INTEGER,
+    matchup_seconds   NUMERIC,
+    partial_poss      NUMERIC,
+    player_pts        INTEGER,   -- points the offensive player scored vs this defender
+    team_pts          INTEGER,   -- points the offense scored while matched up
+    fgm               INTEGER,
+    fga               INTEGER,
+    fg3m              INTEGER,
+    fg3a              INTEGER,
+    ftm               INTEGER,
+    fta               INTEGER,
+    ast               INTEGER,
+    tov               INTEGER,
+    blk               INTEGER,
+    help_blk          INTEGER,
+    switches_on       INTEGER,
+    shooting_fouls    INTEGER,
+    PRIMARY KEY (game_id, off_player_id, def_player_id)
+);
+CREATE INDEX IF NOT EXISTS matchups_def_idx ON matchups (def_player_id);
+CREATE INDEX IF NOT EXISTS matchups_off_idx ON matchups (off_player_id);
+
+-- Tracks which per-game steps finished, so the pipeline can resume after a crash.
+CREATE TABLE IF NOT EXISTS pipeline_log (
+    game_id    TEXT,
+    step       TEXT,          -- 'stints' or 'matchups'
+    status     TEXT,          -- 'done' or 'failed'
+    detail     TEXT,
+    updated_at TIMESTAMPTZ DEFAULT now(),
+    PRIMARY KEY (game_id, step)
+);

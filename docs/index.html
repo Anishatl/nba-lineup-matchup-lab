@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>NBA Lineup &amp; Matchup Lab</title>
+  <style>
+    :root { --bg: #0f1115; --fg: #e8e8ea; --muted: #9aa0a6; --accent: #e03a3e; }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; display: grid; place-items: center;
+           background: var(--bg); color: var(--fg);
+           font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+    main { max-width: 640px; padding: 2rem; }
+    h1 { font-size: 2.2rem; margin: 0 0 .5rem; letter-spacing: -0.02em; }
+    .tag { display: inline-block; font-size: .8rem; padding: .2rem .6rem; border-radius: 999px;
+           border: 1px solid var(--accent); color: var(--accent); margin-bottom: 1rem; }
+    p { color: var(--muted); line-height: 1.6; }
+    ul { color: var(--muted); line-height: 1.8; padding-left: 1.2rem; }
+    a { color: var(--fg); }
+  </style>
+</head>
+<body>
+  <main>
+    <span class="tag">In progress</span>
+    <h1>NBA Lineup &amp; Matchup Lab</h1>
+    <p>Pick any NBA team and see its best lineups and optimal defensive matchups,
+       built from three seasons of play-by-play and player-tracking data.</p>
+    <ul>
+      <li><strong>Lineup explorer:</strong> every 5-man combination ranked by projected net rating (RAPM)</li>
+      <li><strong>Matchup planner:</strong> who should guard whom against any opponent (Hungarian algorithm)</li>
+      <li><strong>Player impact:</strong> offensive and defensive ratings for every player</li>
+    </ul>
+    <p>Code: <a href="https://github.com/Anishatl/nba-lineup-matchup-lab">github.com/Anishatl/nba-lineup-matchup-lab</a></p>
+  </main>
+</body>
+</html>
