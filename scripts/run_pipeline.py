@@ -4,7 +4,7 @@ Examples:
     python scripts/run_pipeline.py                          # all default seasons
     python scripts/run_pipeline.py --seasons 2025-26 2026-27
     python scripts/run_pipeline.py --seasons 2025-26 --limit 5   # quick test on 5 games
-    python scripts/run_pipeline.py --steps stints            # only rebuild stints
+    python scripts/run_pipeline.py --steps stints --redo     # rebuild stints from cache
 
 Safe to stop and re-run at any time: finished games are skipped.
 """
@@ -30,6 +30,8 @@ def parse_args():
     p.add_argument("--steps", nargs="+", choices=ALL_STEPS, default=ALL_STEPS)
     p.add_argument("--limit", type=int, default=None,
                    help="Only process this many games per season (for testing)")
+    p.add_argument("--redo", action="store_true",
+                   help="Reprocess games even if already done (uses cached downloads)")
     return p.parse_args()
 
 
@@ -40,8 +42,8 @@ def season_games(conn, season: str) -> list[tuple]:
         return cur.fetchall()
 
 
-def run_per_game(conn, step: str, games: list[tuple]) -> None:
-    done = db.done_games(conn, step)
+def run_per_game(conn, step: str, games: list[tuple], redo: bool = False) -> None:
+    done = set() if redo else db.done_games(conn, step)
     todo = [g for g in games if g[0] not in done]
     log.info("%s: %d games to do (%d already done)", step, len(todo), len(games) - len(todo))
     failures = 0
@@ -83,7 +85,7 @@ def main():
             for step in ("stints", "matchups"):
                 if step in args.steps:
                     log.info("=== %s: %s ===", season, step)
-                    run_per_game(conn, step, games)
+                    run_per_game(conn, step, games, args.redo)
     log.info("Pipeline finished.")
 
 

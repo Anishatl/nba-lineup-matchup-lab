@@ -47,15 +47,41 @@ def _period_length(period: int) -> float:
     return 720.0 if period <= 4 else 300.0
 
 
-def extract_possessions(game_id: str, home_team_id: int, away_team_id: int) -> tuple[list, int]:
-    """Download/parse one game. Returns (possession records, # skipped)."""
+def _counted_points(events, home_team_id: int, away_team_id: int) -> dict:
+    """Points from counting made shots / free throws (used only as a cross-check)."""
+    pts = {home_team_id: 0, away_team_id: 0}
+    for ev in events:
+        team = getattr(ev, "team_id", None)
+        if team not in pts:
+            continue
+        if isinstance(ev, FieldGoal) and ev.is_made:
+            pts[team] += ev.shot_value
+        elif isinstance(ev, FreeThrow) and ev.is_made:
+            pts[team] += 1
+    return pts
+
+
+def extract_possessions(game_id: str, home_team_id: int, away_team_id: int) -> tuple[list, dict]:
+    """Download/parse one game.
+
+    Points come from the running score that NBA's live feed attaches to every
+    event (home_score / away_score): points on a possession = score at its last
+    event minus score at the previous possession's last event. This can't miss
+    a basket the way counting individual makes can.
+
+    Returns (possession records, diagnostics dict).
+    """
     game = _client(game_id).Game(game_id)
-    records, skipped = [], 0
+    records = []
+    diag = {"possessions": 0, "skipped": 0, "skipped_home_pts": 0, "skipped_away_pts": 0,
+            "counted_home_pts": 0, "counted_away_pts": 0, "final_home": 0, "final_away": 0}
     prev_period, prev_remaining = None, None
+    score = (0, 0)  # running (home, away) score
 
     for poss in game.possessions.items:
         if not poss.events:
             continue
+        diag["possessions"] += 1
         period = poss.events[0].period
         if period != prev_period:
             prev_period, prev_remaining = period, _period_length(period)
@@ -63,30 +89,34 @@ def extract_possessions(game_id: str, home_team_id: int, away_team_id: int) -> t
         seconds = max(prev_remaining - end_remaining, 0.0)
         prev_remaining = end_remaining
 
+        # Score change across this possession
+        start = score
+        for ev in poss.events:
+            h, a = getattr(ev, "home_score", None), getattr(ev, "away_score", None)
+            if isinstance(h, int) and isinstance(a, int) and (h, a) >= (0, 0):
+                score = (max(score[0], h), max(score[1], a))  # score never goes down
+        home_pts, away_pts = score[0] - start[0], score[1] - start[1]
+
+        counted = _counted_points(poss.events, home_team_id, away_team_id)
+        diag["counted_home_pts"] += counted[home_team_id]
+        diag["counted_away_pts"] += counted[away_team_id]
+
         # Lineups at the start of the possession
         players = poss.events[0].current_players
         home = tuple(sorted(players.get(home_team_id, [])))
         away = tuple(sorted(players.get(away_team_id, [])))
         if len(home) != 5 or len(away) != 5:
-            skipped += 1
+            diag["skipped"] += 1
+            diag["skipped_home_pts"] += home_pts
+            diag["skipped_away_pts"] += away_pts
             continue
-
-        # Credit every made shot / free throw to the team that made it
-        pts = {home_team_id: 0, away_team_id: 0}
-        for ev in poss.events:
-            team = getattr(ev, "team_id", None)
-            if team not in pts:
-                continue
-            if isinstance(ev, FieldGoal) and ev.is_made:
-                pts[team] += ev.shot_value
-            elif isinstance(ev, FreeThrow) and ev.is_made:
-                pts[team] += 1
 
         records.append(PossessionRecord(
             period=period, offense_team_id=poss.offense_team_id,
             home_players=home, away_players=away, seconds=seconds,
-            home_pts=pts[home_team_id], away_pts=pts[away_team_id]))
-    return records, skipped
+            home_pts=home_pts, away_pts=away_pts))
+    diag["final_home"], diag["final_away"] = score
+    return records, diag
 
 
 def possessions_to_stints(records: list[PossessionRecord], home_team_id: int) -> list[dict]:
@@ -113,7 +143,8 @@ def possessions_to_stints(records: list[PossessionRecord], home_team_id: int) ->
 
 
 def load_game(conn, game_id: str, home_team_id: int, away_team_id: int) -> int:
-    records, skipped = extract_possessions(game_id, home_team_id, away_team_id)
+    records, diag = extract_possessions(game_id, home_team_id, away_team_id)
+    skipped = diag["skipped"]
     stints = possessions_to_stints(records, home_team_id)
     rows = [(game_id, i, s["period"], s["home_players"], s["away_players"],
              round(s["seconds"], 1), s["home_poss"], s["away_poss"],
