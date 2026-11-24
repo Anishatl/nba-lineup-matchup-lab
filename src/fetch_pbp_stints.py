@@ -4,16 +4,21 @@ Uses pbpstats with the 'live' data provider (NBA's liveData feed). The old
 stats.nba.com playbyplayv2 endpoint now returns empty data, so the default
 pbpstats provider no longer works.
 """
+import re
 from dataclasses import dataclass
 
+from nba_api.stats.endpoints import boxscoretraditionalv3
 from pbpstats.client import Client
-from pbpstats.resources.enhanced_pbp import FieldGoal, FreeThrow
+from pbpstats.resources.enhanced_pbp import FieldGoal, FreeThrow, InvalidNumberOfStartersException
 
 import config
 from src import db
-from src.utils import get_logger
+from src.utils import clock_to_seconds, get_logger, read_json, with_retries, write_json
 
 log = get_logger("stints")
+
+OVERRIDES_FILE = config.PBP_DIR / "overrides" / "missing_period_starters.json"
+_STARTERS_ERR = re.compile(r"GameId: (\d+), Period: (\d+), TeamId: (\d+)")
 
 
 @dataclass
@@ -45,6 +50,41 @@ def _client(game_id: str) -> Client:
 
 def _period_length(period: int) -> float:
     return 720.0 if period <= 4 else 300.0
+
+
+def _period_start_tenths(period: int) -> int:
+    """Game time at the start of a period, in tenths of a second (NBA.com range units)."""
+    if period <= 4:
+        return (period - 1) * 7200
+    return 4 * 7200 + (period - 5) * 3000
+
+
+def find_period_starters(game_id: str, period: int, team_id: int) -> list[int] | None:
+    """Ask NBA.com's box score who played in the first few seconds of a period.
+    Tries growing windows and returns the first window where the team has
+    exactly 5 players with playing time."""
+    start = _period_start_tenths(period)
+    for window_sec in (3, 10, 30, 60):
+        resp = with_retries(boxscoretraditionalv3.BoxScoreTraditionalV3,
+                            game_id=game_id, range_type="2",
+                            start_period="0", end_period="0",
+                            start_range=str(start), end_range=str(start + window_sec * 10),
+                            timeout=config.REQUEST_TIMEOUT)
+        df = resp.get_data_frames()[0]
+        played = [int(r.personId) for r in df.itertuples(index=False)
+                  if int(r.teamId) == team_id and clock_to_seconds(r.minutes or 0) > 0]
+        if len(played) == 5:
+            return sorted(played)
+        if len(played) > 5:  # a sub happened inside the window; smaller windows also failed
+            break
+    return None
+
+
+def add_starter_override(game_id: str, period: int, team_id: int, players: list[int]) -> None:
+    """Merge one fix into pbpstats' overrides file (it reads this automatically)."""
+    data = read_json(OVERRIDES_FILE) or {}
+    data.setdefault(game_id, {}).setdefault(str(period), {})[str(team_id)] = players
+    write_json(OVERRIDES_FILE, data)
 
 
 def _counted_points(events, home_team_id: int, away_team_id: int) -> dict:
@@ -189,7 +229,25 @@ def possessions_to_stints(records: list[PossessionRecord], home_team_id: int) ->
 
 
 def load_game(conn, game_id: str, home_team_id: int, away_team_id: int) -> int:
-    records, diag = extract_possessions(game_id, home_team_id, away_team_id)
+    # Overtime/period starters sometimes can't be read from the play-by-play
+    # (a player on the floor with no recorded events). Look them up, save an
+    # override, and retry. Up to 8 fixes per game (both teams, several OTs).
+    for _ in range(8):
+        try:
+            records, diag = extract_possessions(game_id, home_team_id, away_team_id)
+            break
+        except InvalidNumberOfStartersException as exc:
+            m = _STARTERS_ERR.search(str(exc))
+            if not m:
+                raise
+            gid, period, team = m.group(1), int(m.group(2)), int(m.group(3))
+            starters = find_period_starters(gid, period, team)
+            if not starters:
+                raise
+            log.info("%s period %d team %d: starters from box score %s", gid, period, team, starters)
+            add_starter_override(gid, period, team, starters)
+    else:
+        raise RuntimeError(f"{game_id}: still missing period starters after 8 fixes")
     skipped = diag["skipped"]
     stints = possessions_to_stints(records, home_team_id)
     rows = [(game_id, i, s["period"], s["home_players"], s["away_players"],
