@@ -84,6 +84,22 @@ python scripts/run_pipeline.py
 | `stints` | NBA liveData play-by-play via `pbpstats` | 1 per game |
 | `matchups` | `BoxScoreMatchupsV3` | 1 per game |
 
+## Fit the RAPM model
+
+```bash
+python scripts/run_rapm.py --validate
+```
+
+- Builds the design matrix (2 rows per stint, O and D column per player, home-court column).
+- Picks the ridge penalty with 5-fold cross-validation **split by game** (no game's stints in both train and test).
+- Recency-weights seasons (current ×1, last ×0.5, ...). Change with `--decay`.
+- Saves the run to `model_runs` and ratings to `player_ratings`, prints top/bottom players.
+- `--validate` trains on 2023-24 + 2024-25, predicts 2025-26, compares RAPM against league average and raw +/-, and writes `reports/rapm_validation.md`.
+
+```bash
+psql -U postgres -d nba_lab -v team=ATL -v min_poss=1000 -f db/queries/player_ratings.sql
+```
+
 ## Starter SQL
 
 ```bash
@@ -127,7 +143,7 @@ data/raw/              cached raw responses (git-ignored)
 ## Roadmap
 
 - [x] **Step 1: Data pipeline.** 3,934 games validated against box scores. Postgres schema, play-by-play → stints, matchup tracking, starter SQL
-- [ ] **Step 2: RAPM.** Ridge regression on stints, cross-validated penalty, out-of-sample check vs. raw +/-
+- [x] **Step 2: RAPM.** Ridge regression on stints, cross-validated penalty, out-of-sample check vs. raw +/-
 - [ ] **Step 3: Matchup model.** Shrunk defender-vs-scorer PPP, model for unseen pairs, Hungarian assignment, calibration
 - [ ] **Step 4: Dashboard.** Team picker, lineup explorer, matchup planner with defensive-emphasis slider, player cards
 

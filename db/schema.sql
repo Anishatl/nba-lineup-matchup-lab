@@ -94,3 +94,37 @@ CREATE TABLE IF NOT EXISTS pipeline_log (
     updated_at TIMESTAMPTZ DEFAULT now(),
     PRIMARY KEY (game_id, step)
 );
+
+-- ---------------------------------------------------------------------------
+-- Step 2: RAPM
+-- ---------------------------------------------------------------------------
+
+-- One row per model fit (re-run weekly and keep the history).
+CREATE TABLE IF NOT EXISTS model_runs (
+    run_id          SERIAL PRIMARY KEY,
+    created_at      TIMESTAMPTZ DEFAULT now(),
+    model           TEXT NOT NULL,          -- 'rapm'
+    seasons         TEXT[] NOT NULL,
+    season_weights  NUMERIC[],
+    alpha           NUMERIC,                -- ridge penalty (lambda)
+    intercept       NUMERIC,                -- league-average pts per 100
+    home_adv        NUMERIC,                -- home-court pts per 100
+    n_rows          INTEGER,
+    n_players       INTEGER,
+    cv_rmse         NUMERIC,
+    notes           TEXT
+);
+
+-- Player ratings for a run. Raw regression coefficients:
+--   o_rapm > 0 is good, d_rapm < 0 is good (fewer points allowed).
+--   total_rapm = o_rapm - d_rapm (net impact, > 0 is good).
+CREATE TABLE IF NOT EXISTS player_ratings (
+    run_id      INTEGER REFERENCES model_runs(run_id) ON DELETE CASCADE,
+    player_id   INTEGER REFERENCES players(player_id),
+    o_rapm      NUMERIC,
+    d_rapm      NUMERIC,
+    total_rapm  NUMERIC,
+    off_poss    INTEGER,
+    def_poss    INTEGER,
+    PRIMARY KEY (run_id, player_id)
+);
