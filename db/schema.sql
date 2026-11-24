@@ -128,3 +128,34 @@ CREATE TABLE IF NOT EXISTS player_ratings (
     def_poss    INTEGER,
     PRIMARY KEY (run_id, player_id)
 );
+
+-- ---------------------------------------------------------------------------
+-- Step 3: matchup model
+-- ---------------------------------------------------------------------------
+
+-- Per-player skills from the matchup model (model_runs.model = 'matchup').
+-- Units: points per 100 matchup possessions vs. the model intercept.
+--   scorer_skill   > 0 = scores more than average against everyone
+--   defender_skill < 0 = holds scorers below average (good defender)
+-- Height/weight/three_rate are the inputs used for the size/style terms.
+CREATE TABLE IF NOT EXISTS matchup_ratings (
+    run_id          INTEGER REFERENCES model_runs(run_id) ON DELETE CASCADE,
+    player_id       INTEGER REFERENCES players(player_id),
+    scorer_skill    NUMERIC,
+    defender_skill  NUMERIC,
+    off_poss        NUMERIC,
+    def_poss        NUMERIC,
+    height_inches   NUMERIC,
+    weight_lbs      NUMERIC,
+    three_rate      NUMERIC,
+    PRIMARY KEY (run_id, player_id)
+);
+
+-- Named scalar parameters for a run (feature weights, centering constants,
+-- calibration a/b/c, ...). Lets the dashboard rebuild any prediction.
+CREATE TABLE IF NOT EXISTS model_params (
+    run_id  INTEGER REFERENCES model_runs(run_id) ON DELETE CASCADE,
+    name    TEXT,
+    value   NUMERIC,
+    PRIMARY KEY (run_id, name)
+);

@@ -100,12 +100,44 @@ python scripts/run_rapm.py --validate
 psql -U postgres -d nba_lab -v team=ATL -v min_poss=1000 -f db/queries/player_ratings.sql
 ```
 
+## Fit the matchup model
+
+```bash
+python scripts/run_matchups.py        # fit + validate + calibrate + save (run run_rapm.py first)
+```
+
+- **Matchup model:** weighted ridge on every game × (scorer, defender) row:
+  pts per 100 matchup possessions ≈ intercept + scorer skill + defender skill + size/style terms
+  (height diff, weight diff, squared size mismatch, scorer 3PA share × defender height).
+  Works for pairs that have never faced each other.
+- **Validation:** trains on 2023-24 + 2024-25, predicts 2025-26 matchups, compares league average →
+  scorer only → + defender → + size/style.
+- **Calibration:** on the held-out season, fits
+  `pts/100 = base + a·ΣO-RAPM + b·(optimal matchup defense) + c·ΣD-RAPM + h·home`
+  so both models are on one scale, and compares against RAPM alone.
+- Writes `reports/matchup_validation.md`.
+
+## Plan a matchup
+
+```bash
+python scripts/plan_matchup.py --team ATL --opp NYK
+python scripts/plan_matchup.py --team ATL --opp NYK --slider 1.5
+python scripts/plan_matchup.py --team ATL --opp BOS --opp-players Tatum Brown White Holiday Porzingis
+```
+
+Ranks every 5-man combination of your roster against the opponent's lineup (default: their most-used
+five this season) and prints the Hungarian-optimal defensive assignments. Players can be passed by
+name or ID on either side.
+
+`net = scored − slider × allowed` (pts/100 vs. an average matchup); `--slider` > 1 weights defense more.
+
 ## Starter SQL
 
 ```bash
 psql -U postgres -d nba_lab -v team=ATL -v season=2025-26 -v min_poss=150 -f db/queries/best_lineups.sql
 psql -U postgres -d nba_lab -v team=ATL -v season=2025-26 -f db/queries/player_on_off.sql
 psql -U postgres -d nba_lab -v season=2025-26 -v min_poss=1500 -v team=ALL -f db/queries/top_defenders.sql
+psql -U postgres -d nba_lab -v team=ALL -v min_poss=1500 -f db/queries/matchup_ratings.sql
 ```
 
 Swap `ATL` for any team abbreviation.
@@ -144,7 +176,7 @@ data/raw/              cached raw responses (git-ignored)
 
 - [x] **Step 1: Data pipeline.** 3,934 games validated against box scores. Postgres schema, play-by-play → stints, matchup tracking, starter SQL
 - [x] **Step 2: RAPM.** Ridge regression on stints, cross-validated penalty, out-of-sample check vs. raw +/-
-- [ ] **Step 3: Matchup model.** Shrunk defender-vs-scorer PPP, model for unseen pairs, Hungarian assignment, calibration
+- [x] **Step 3: Matchup model.** Shrunk defender-vs-scorer PPP, model for unseen pairs, Hungarian assignment, calibration
 - [ ] **Step 4: Dashboard.** Team picker, lineup explorer, matchup planner with defensive-emphasis slider, player cards
 
 ## Data coverage & validation
