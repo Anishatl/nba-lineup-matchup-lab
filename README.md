@@ -94,6 +94,12 @@ psql -U postgres -d nba_lab -v season=2025-26 -v min_poss=1500 -v team=ALL -f db
 
 Swap `ATL` for any team abbreviation.
 
+**Windows:** if psql errors with `has no equivalent in encoding "WIN1252"` (player names like Porziņģis), switch the console to UTF-8 first:
+```powershell
+chcp 65001
+$env:PGCLIENTENCODING = "UTF8"
+```
+
 ## Database
 
 | Table | One row per |
