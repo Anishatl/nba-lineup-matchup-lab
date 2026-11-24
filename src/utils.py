@@ -35,13 +35,17 @@ def throttle() -> None:
     _last_request = time.monotonic()
 
 
-def with_retries(fn, *args, retries: int = config.MAX_RETRIES, **kwargs):
+def with_retries(fn, *args, retries: int = config.MAX_RETRIES,
+                 no_retry: tuple = (), **kwargs):
     """Call fn, retrying with exponential backoff on any exception
-    (NBA.com often times out or drops connections)."""
+    (NBA.com often times out or drops connections). Exceptions listed in
+    no_retry are raised immediately (e.g. 'data not posted yet')."""
     for attempt in range(1, retries + 1):
         throttle()
         try:
             return fn(*args, **kwargs)
+        except no_retry:
+            raise
         except Exception as exc:  # noqa: BLE001 - we really do want to retry anything
             if attempt == retries:
                 raise

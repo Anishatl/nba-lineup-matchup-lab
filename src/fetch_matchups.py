@@ -16,8 +16,11 @@ def _fetch(game_id: str) -> list[dict]:
     cache = config.MATCHUP_DIR / f"{game_id}.json"
     data = read_json(cache)
     if data is None:
+        # NBA.com returns an empty payload (nba_api raises IndexError) when a
+        # game's tracking data isn't posted yet. Don't burn retries on that;
+        # the game stays 'failed' and is retried on the next pipeline run.
         resp = with_retries(boxscorematchupsv3.BoxScoreMatchupsV3, game_id=game_id,
-                            timeout=config.REQUEST_TIMEOUT)
+                            timeout=config.REQUEST_TIMEOUT, no_retry=(IndexError,))
         data = resp.get_data_frames()[0].to_dict("records")
         write_json(cache, data)
     return data
