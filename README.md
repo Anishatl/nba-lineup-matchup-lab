@@ -120,10 +120,30 @@ data/raw/              cached raw responses (git-ignored)
 
 ## Roadmap
 
-- [x] **Step 1: Data pipeline.** Postgres schema, play-by-play → stints, matchup tracking, starter SQL
+- [x] **Step 1: Data pipeline.** 3,934 games validated against box scores. Postgres schema, play-by-play → stints, matchup tracking, starter SQL
 - [ ] **Step 2: RAPM.** Ridge regression on stints, cross-validated penalty, out-of-sample check vs. raw +/-
 - [ ] **Step 3: Matchup model.** Shrunk defender-vs-scorer PPP, model for unseen pairs, Hungarian assignment, calibration
 - [ ] **Step 4: Dashboard.** Team picker, lineup explorer, matchup planner with defensive-emphasis slider, player cards
+
+## Data coverage & validation
+
+Stint points are checked against official box scores for every game (`scripts/check_stints.py`).
+
+| Season | Games | Stints loaded | Exact score match |
+|---|---|---|---|
+| 2023-24 | 1,230 | 1,230 | 1,230 |
+| 2024-25 | 1,225 | 1,224 | 1,223 |
+| 2025-26 | 1,225 | 1,225 | 1,224 |
+| 2026-27 (through Nov 23) | 257 | 255 | 253 |
+| **Total** | **3,937** | **3,934 (99.9%)** | **3,930 (99.8%)** |
+
+Matchup tracking: 3,922 games (the most recent games are added once NBA.com posts them).
+
+Problems found and fixed along the way:
+- **Points short by ~5%.** Lineups were read from the first event of each possession, which is sometimes incomplete. Fixed by scanning every event in the possession. Result: 0 dropped possessions.
+- **Overtime starters unknown.** A player on the floor with no recorded events is invisible to the play-by-play. Fixed by looking up who played in the first seconds of the period in NBA.com's time-ranged box score and saving it as a pbpstats override.
+- **2026-27 feed format changes.** NBA's live feed began omitting `personId` on non-player events and sometimes references rebounds to nonexistent shot IDs. Patched in `src/pbpstats_patches.py`.
+- **3 games excluded** for malformed source data (a foul and a violation missing fields, and a team rebound with no preceding miss).
 
 ## Known limitations
 
