@@ -13,6 +13,7 @@ from pbpstats.resources.enhanced_pbp import FieldGoal, FreeThrow, InvalidNumberO
 
 import config
 from src import db
+from src import pbpstats_patches  # noqa: F401 - fixes newer live feed format
 from src.utils import clock_to_seconds, get_logger, read_json, with_retries, write_json
 
 log = get_logger("stints")
