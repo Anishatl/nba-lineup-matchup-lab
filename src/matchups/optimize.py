@@ -20,7 +20,7 @@ Every function takes plain lists of player IDs, so any players can be used on
 either side.
 """
 from dataclasses import dataclass
-from itertools import combinations
+from itertools import combinations, permutations
 
 import numpy as np
 import pandas as pd
@@ -64,6 +64,39 @@ class Engine:
         c = self.cal
         return (c.base + c.a * self._sum(self.o_rapm, offense)
                 + c.b * (dm - c.dm_mean) + c.c * self._sum(self.d_rapm, defense))
+
+    def top_assignments(self, defenders, scorers, k: int = 2):
+        """The k best one-to-one assignments of 5 defenders onto 5 scorers
+        (all 120 are checked). Returns [(pairs, total), ...], best first."""
+        defenders, scorers = list(defenders), list(scorers)
+        M = self.matchup.matrix(defenders, scorers)
+        if len(defenders) != len(scorers):
+            return [self.best_assignment(defenders, scorers)]
+        results = []
+        for perm in permutations(range(len(scorers))):
+            total = float(sum(M[i, j] for i, j in enumerate(perm)))
+            results.append(([(defenders[i], scorers[j], float(M[i, j])) for i, j in enumerate(perm)], total))
+        results.sort(key=lambda r: r[1])
+        return results[:k]
+
+    def evaluate(self, mine, theirs, assignment: dict, slider: float = 1.0) -> dict:
+        """Value of a user-chosen setup. `assignment` maps each of my players
+        to the opponent he guards. Points allowed use that assignment; points
+        scored assume the opponent defends my five optimally."""
+        mine, theirs = list(mine), list(theirs)
+        if sorted(assignment) != sorted(mine) or sorted(assignment.values()) != sorted(theirs):
+            raise ValueError("assignment must map each of my 5 players to a different opponent")
+        c = self.cal
+        pairs = [(d, s, float(self.matchup.predict_pairs([s], [d])[0])) for d, s in assignment.items()]
+        dm_allowed = sum(p[2] for p in pairs)
+        allowed = (c.base + c.a * self._sum(self.o_rapm, theirs)
+                   + c.b * (dm_allowed - c.dm_mean) + c.c * self._sum(self.d_rapm, mine))
+        scored = self.scored(mine, theirs)
+        best = self.lineup_value(mine, theirs, slider)
+        net = (scored - c.base) - slider * (allowed - c.base)
+        return {"lineup": tuple(mine), "scored": scored, "allowed": allowed, "net": net,
+                "assignment": pairs, "best_net": best["net"], "best_assignment": best["assignment"],
+                "cost_vs_best": best["net"] - net}
 
     # --- user-facing -------------------------------------------------------
     def lineup_value(self, mine, theirs, slider: float = 1.0) -> dict:

@@ -5,6 +5,12 @@ Examples:
     python scripts/plan_matchup.py --team ATL --opp NYK --slider 1.5
     python scripts/plan_matchup.py --team ATL --opp BOS --opp-players "Tatum" "Brown" "White" "Holiday" "Porzingis"
     python scripts/plan_matchup.py --team ATL --opp NYK --my-players "Daniels" "Johnson" "Okongwu" ...
+    python scripts/plan_matchup.py --team ATL --opp NYK --size-strength 0.5
+
+Sandbox (score your own 5 and your own assignments):
+    python scripts/plan_matchup.py --team ATL --opp NYK \
+        --my-players Daniels McCollum Johnson Alexander-Walker Okongwu \
+        --assign Daniels=Brunson McCollum=Bridges Johnson=Anunoby Alexander-Walker=Hart Okongwu=Towns
 
 Players can be given by (part of) their name or by NBA player ID, so any
 players can be used on either side.
@@ -25,6 +31,10 @@ def parse_args():
     p.add_argument("--opp", required=True, help="Opponent abbreviation, e.g. NYK")
     p.add_argument("--season", default=None, help="Season for rosters (default: latest)")
     p.add_argument("--slider", type=float, default=1.0, help="Defensive emphasis (1.0 = plain net rating)")
+    p.add_argument("--size-strength", type=float, default=1.0,
+                   help="Scale the size/style matchup effects (1 = as fitted, 0 = off)")
+    p.add_argument("--assign", nargs=5, default=None, metavar="MINE=THEIRS",
+                   help="Sandbox: score this exact assignment (needs exactly 5 --my-players)")
     p.add_argument("--opp-players", nargs=5, default=None, help="Exactly 5 opponent players")
     p.add_argument("--my-players", nargs="+", default=None, help="Your candidate players (5+)")
     p.add_argument("--min-minutes", type=float, default=150)
@@ -82,6 +92,7 @@ def main():
             cur.execute("SELECT MAX(season) FROM games")
             season = cur.fetchone()[0]
         engine = store.load_engine(conn)
+        engine.matchup.size_strength = args.size_strength
 
         theirs = ([resolve(cur, t) for t in args.opp_players] if args.opp_players
                   else most_used_lineup(cur, args.opp, season))
@@ -93,20 +104,56 @@ def main():
                     (list(set(mine) | set(theirs)),))
         name = dict(cur.fetchall())
 
-        print(f"\n{args.team} vs {args.opp} ({season}), defensive emphasis x{args.slider}")
+        def nm(p):
+            return name.get(p, str(p))
+
+        print(f"\n{args.team} vs {args.opp} ({season}), defensive emphasis x{args.slider}, "
+              f"size effects x{args.size_strength}")
         print(f"Opponent lineup: {', '.join(name.get(p, str(p)) for p in theirs)}")
         print(f"Searching {len(mine)} players -> every 5-man combination\n")
+
+        if args.assign:
+            if len(mine) != 5:
+                raise SystemExit("--assign needs exactly 5 --my-players.")
+            assignment = {}
+            for pair in args.assign:
+                if "=" not in pair:
+                    raise SystemExit(f"Bad --assign entry '{pair}'. Use MINE=THEIRS.")
+                a, b = pair.split("=", 1)
+                assignment[resolve(cur, a)] = resolve(cur, b)
+            bad = [nm(p) for p in assignment.values() if p not in theirs]
+            missing = [nm(p) for p in mine if p not in assignment]
+            if bad or missing or len(set(assignment.values())) != 5:
+                raise SystemExit("Each of your 5 must guard a different opponent in: "
+                                 + ", ".join(nm(p) for p in theirs)
+                                 + (f". Not in their lineup: {', '.join(bad)}" if bad else "")
+                                 + (f". No assignment for: {', '.join(missing)}" if missing else ""))
+            r = engine.evaluate(mine, theirs, assignment, args.slider)
+            print("Your setup:")
+            for d, s_, ppp in r["assignment"]:
+                print(f"  {nm(d):<28} guards {nm(s_):<28} ({ppp:.1f} pts/100 matchup poss)")
+            print(f"  net {r['net']:+.1f}  (scored {r['scored']:.1f}, allowed {r['allowed']:.1f})")
+            print(f"\nBest possible with these 5: net {r['best_net']:+.1f}  "
+                  f"-> your setup gives up {r['cost_vs_best']:.1f} pts/100")
+            for d, s_, ppp in sorted(r["best_assignment"], key=lambda x: -x[2]):
+                print(f"  {nm(d):<28} guards {nm(s_):<28} ({ppp:.1f})")
+            return
 
         ranked = engine.rank_lineups(mine, theirs, args.slider, args.top)
         print(f"{'#':>2}  {'net':>6} {'scored':>7} {'allowed':>8}  lineup")
         for i, r in enumerate(ranked, 1):
-            names = ", ".join(sorted(name.get(p, str(p)).split()[-1] for p in r["lineup"]))
+            names = ", ".join(sorted(nm(p).split()[-1] for p in r["lineup"]))
             print(f"{i:>2}  {r['net']:+6.1f} {r['scored']:7.1f} {r['allowed']:8.1f}  {names}")
 
         best = ranked[0]
-        print("\nBest lineup's defensive assignments (Hungarian algorithm):")
-        for d, s, ppp in sorted(best["assignment"], key=lambda x: -x[2]):
-            print(f"  {name.get(d, d):<28} guards {name.get(s, s):<28} ({ppp:.1f} pts/100 matchup poss)")
+        options = engine.top_assignments(list(best["lineup"]), theirs, k=2)
+        b = engine.cal.b
+        for rank, (pairs, total) in enumerate(options, 1):
+            gap = "" if rank == 1 else (f"  (+{total - options[0][1]:.1f} matchup pts/100, "
+                                        f"about {b * (total - options[0][1]):+.2f} allowed per 100 after calibration)")
+            print(f"\nAssignment option {rank} for the best lineup{gap}:")
+            for d, s_, ppp in sorted(pairs, key=lambda x: -x[2]):
+                print(f"  {nm(d):<28} guards {nm(s_):<28} ({ppp:.1f} pts/100 matchup poss)")
         print("\nnet = scored - slider x allowed, both relative to an average matchup (pts/100).")
 
 

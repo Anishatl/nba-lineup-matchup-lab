@@ -122,6 +122,11 @@ def run(conn, train_seasons, test_season, decay, rapm_alpha, matchup_alpha,
 
     full = _wls(np.column_stack([ones, O, DM - dm_mean, D, home]), y, poss)
     base_only = _wls(np.column_stack([ones, O, D, home]), y, poss)
+    if full[2] < 0:
+        # A negative weight would mean "worse matchups -> fewer points allowed",
+        # which is meaningless; the matchup term adds nothing here, so drop it.
+        log(f"  matchup-defense weight came out negative ({full[2]:.3f}); setting b = 0")
+        full = np.array([base_only[0], base_only[1], 0.0, base_only[2], base_only[3]])
 
     pred_full = np.column_stack([ones, O, DM - dm_mean, D, home]) @ full
     pred_rapm = np.column_stack([ones, O, D, home]) @ base_only

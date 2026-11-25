@@ -135,15 +135,30 @@ Run `run_rapm.py` first.
 
 ```bash
 python scripts/plan_matchup.py --team ATL --opp NYK
-python scripts/plan_matchup.py --team ATL --opp NYK --slider 1.5
+python scripts/plan_matchup.py --team ATL --opp NYK --slider 1.5 --size-strength 0.5
 python scripts/plan_matchup.py --team ATL --opp BOS --opp-players Tatum Brown White Holiday Porzingis
 ```
 
 Ranks every 5-man combination of your roster against the opponent's lineup (default: their most-used
-five this season) and prints the Hungarian-optimal defensive assignments. Players can be passed by
-name or ID on either side.
+five this season) and shows the **two best defensive assignments** for the top lineup, with the gap
+between them. Players can be passed by name or ID on either side.
 
-`net = scored − slider × allowed` (pts/100 vs. an average matchup); `--slider` > 1 weights defense more.
+- `--slider` (defensive emphasis): `net = scored − slider × allowed` (pts/100 vs. an average matchup).
+- `--size-strength`: scales the size/style matchup effects (1 = as fitted, 0 = off), to see how much a
+  recommendation depends on them. Size mismatches in the data often happen on switches, so the fitted
+  effect may partly reflect switching situations rather than size alone.
+
+**Sandbox:** score your own five and your own assignments, and see what they cost vs. the optimum:
+
+```bash
+python scripts/plan_matchup.py --team ATL --opp NYK \
+    --my-players Daniels McCollum Johnson Alexander-Walker Okongwu \
+    --assign Daniels=Brunson McCollum=Bridges Johnson=Anunoby Alexander-Walker=Hart Okongwu=Towns
+```
+
+Points allowed use your assignment; points scored assume the opponent defends your five optimally.
+The calibration weight on matchup defense is constrained to be ≥ 0 (a negative weight would mean worse
+matchups lead to fewer points allowed).
 
 ## Starter SQL
 

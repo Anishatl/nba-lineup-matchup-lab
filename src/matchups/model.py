@@ -187,6 +187,7 @@ class MatchupModel:
     meta: dict
     poss_off: np.ndarray = field(default=None)
     poss_def: np.ndarray = field(default=None)
+    size_strength: float = 1.0            # scales the size/style terms (1 = as fitted, 0 = off)
 
     def _skill(self, ids, arr) -> np.ndarray:
         s = pd.Series(arr, index=self.player_ids)
@@ -197,7 +198,8 @@ class MatchupModel:
         off_ids, def_ids = np.asarray(off_ids), np.asarray(def_ids)
         eta = (self.intercept + self._skill(off_ids, self.scorer)
                + self._skill(def_ids, self.defender)
-               + pair_features(off_ids, def_ids, self.feats, self.meta) @ self.feat_coef)
+               + pair_features(off_ids, def_ids, self.feats, self.meta)
+               @ (self.feat_coef * self.size_strength))
         return 100.0 * np.exp(eta) if self.kind == "poisson" else eta
 
     def matrix(self, defenders, scorers) -> np.ndarray:
@@ -207,11 +209,13 @@ class MatchupModel:
         return self.predict_pairs(s, d).reshape(len(defenders), len(scorers))
 
     def total_effects(self, ref_scorers=None, ref_w=None, ref_defenders=None, ref_dw=None) -> pd.DataFrame:
-        """Each player's full effect, size terms included, as a % change.
+        """Each player's full effect, size terms included, as a % change
+        relative to the *possession-weighted average player* (the typical
+        player actually on the floor), not a skill-0 player.
 
-        defender_pct: points his man scores vs. an average defender, averaged
+        defender_pct: points his man scores vs. the average defender, averaged
                       over a reference mix of scorers (negative = better).
-        scorer_pct:   points he scores vs. an average scorer, averaged over a
+        scorer_pct:   points he scores vs. the average scorer, averaged over a
                       reference mix of defenders (positive = better).
         Reference mixes default to everyone, weighted by matchup possessions.
         """
@@ -222,17 +226,18 @@ class MatchupModel:
             ref_defenders, ref_dw = ids, self.poss_def
         ref_w = np.asarray(ref_w, float) / np.sum(ref_w)
         ref_dw = np.asarray(ref_dw, float) / np.sum(ref_dw)
-        AVG = -1  # an id not in the model: skill 0, league-average size
 
-        base_def = self.matrix([AVG], ref_scorers)[0] @ ref_w
-        base_off = self.matrix(ref_defenders, [AVG])[:, 0] @ ref_dw
-        def_pct, off_pct = np.empty(len(ids)), np.empty(len(ids))
+        def_val, off_val = np.empty(len(ids)), np.empty(len(ids))
         for start in range(0, len(ids), 200):          # chunked to limit memory
             chunk = ids[start:start + 200]
-            def_pct[start:start + 200] = self.matrix(chunk, ref_scorers) @ ref_w / base_def - 1
-            off_pct[start:start + 200] = self.matrix(ref_defenders, chunk).T @ ref_dw / base_off - 1
-        return pd.DataFrame({"player_id": ids, "defender_pct": 100 * def_pct,
-                             "scorer_pct": 100 * off_pct})
+            def_val[start:start + 200] = self.matrix(chunk, ref_scorers) @ ref_w
+            off_val[start:start + 200] = self.matrix(ref_defenders, chunk).T @ ref_dw
+        # baselines: what the average defender allows / average scorer scores
+        base_def = float(np.sum(def_val * self.poss_def) / np.sum(self.poss_def))
+        base_off = float(np.sum(off_val * self.poss_off) / np.sum(self.poss_off))
+        return pd.DataFrame({"player_id": ids,
+                             "defender_pct": 100 * (def_val / base_def - 1),
+                             "scorer_pct": 100 * (off_val / base_off - 1)})
 
     def params(self) -> dict:
         p = {"intercept": self.intercept, "alpha": self.alpha,
