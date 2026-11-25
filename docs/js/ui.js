@@ -87,34 +87,51 @@ export function teamSelect(el, teams, value, onChange) {
   el.onchange = () => onChange(el.value);
 }
 
-// ---------- player search: input + datalist over every player ----------
-let listMade = false;
-export function playerSearch(input, data, onPick) {
-  if (!listMade) {
+// ---------- player search: input + datalist ----------
+// pool: list of player ids to offer (e.g. one team's roster); omit for the whole league.
+// Lists are sorted A-Z by name.
+const lists = new Map();
+function datalistFor(data, pool) {
+  const key = pool ? `pl-${[...pool].sort((x, y) => x - y).join('-')}` : 'pl-all';
+  if (!lists.has(key)) {
+    const players = (pool ? pool.map((id) => data.byId.get(id)).filter(Boolean) : data.players)
+      .slice().sort((x, y) => x.name.localeCompare(y.name));
     const dl = document.createElement('datalist');
-    dl.id = 'all-players';
-    const sorted = [...data.players].sort((a, b) => (b.active - a.active) || (b.poss - a.poss));
-    dl.innerHTML = sorted.map((p) => `<option value="${esc(label(p))}"></option>`).join('');
+    dl.id = key;
+    dl.innerHTML = players.map((p) => `<option value="${esc(label(p))}"></option>`).join('');
     document.body.appendChild(dl);
-    listMade = true;
+    lists.set(key, players.map((p) => p.id));
   }
-  input.setAttribute('list', 'all-players');
+  return { id: key, ids: lists.get(key) };
+}
+
+export function playerSearch(input, data, onPick, pool = null) {
+  const dl = datalistFor(data, pool);
+  input.setAttribute('list', dl.id);
+  input.addEventListener('focus', () => input.select());
   input.addEventListener('change', () => {
-    const p = findPlayer(data, input.value);
+    const p = findPlayer(data, input.value, dl.ids);
     if (p) onPick(p.id);
     else input.classList.add('bad');
   });
   input.addEventListener('input', () => input.classList.remove('bad'));
 }
 
+// Players on a team's roster this season, plus any extra ids (e.g. the current lineup).
+export function teamPool(teams, abbr, extra = []) {
+  const ids = (teams[abbr]?.roster || []).map((r) => r.id);
+  return [...new Set(ids.concat(extra))];
+}
+
 export function label(p) { return `${p.name} (${p.team || 'FA'})`; }
 
-export function findPlayer(data, text) {
+export function findPlayer(data, text, ids = null) {
   const t = text.trim().toLowerCase();
   if (!t) return null;
-  const exact = data.players.find((p) => label(p).toLowerCase() === t || p.name.toLowerCase() === t);
+  const pool = ids ? ids.map((id) => data.byId.get(id)).filter(Boolean) : data.players;
+  const exact = pool.find((p) => label(p).toLowerCase() === t || p.name.toLowerCase() === t);
   if (exact) return exact;
-  const hits = data.players.filter((p) => p.name.toLowerCase().includes(t));
+  const hits = pool.filter((p) => p.name.toLowerCase().includes(t));
   return hits.length === 1 ? hits[0] : null;
 }
 

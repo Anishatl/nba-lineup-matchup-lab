@@ -1,5 +1,5 @@
 import { loadData, renderChrome, applyTeamColors, teamSelect, getParams, setParams, playerSearch,
-  mostUsedLineup, defaultRoster, fmt, esc, debounce, showError, label } from './ui.js';
+  mostUsedLineup, defaultRoster, teamPool, fmt, esc, debounce, showError, label } from './ui.js';
 
 const MAX_ROSTER = 15;
 const $ = (id) => document.getElementById(id);
@@ -50,12 +50,13 @@ function name(id) { return D.byId.get(id)?.name || String(id); }
 function renderTheirs() {
   $('their-slots').innerHTML = S.theirs.map((id, i) =>
     `<div class="slot"><span class="pos">${i + 1}</span><input type="search" data-i="${i}" value="${esc(D.byId.get(id) ? label(D.byId.get(id)) : '')}"></div>`).join('');
+  const pool = teamPool(D.teams, S.opp, S.theirs);
   $('their-slots').querySelectorAll('input').forEach((inp) => playerSearch(inp, D, (id) => {
     const i = Number(inp.dataset.i);
     if (S.theirs.includes(id) && S.theirs[i] !== id) { inp.classList.add('bad'); return; }
     S.theirs[i] = id;
     compute();
-  }));
+  }, pool));
 }
 
 function renderRoster() {

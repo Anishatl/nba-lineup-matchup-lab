@@ -1,5 +1,5 @@
 import { loadData, renderChrome, applyTeamColors, teamSelect, getParams, setParams, playerSearch,
-  mostUsedLineup, fmt, esc, debounce, showError, label } from './ui.js';
+  mostUsedLineup, teamPool, fmt, esc, debounce, showError, label } from './ui.js';
 
 const $ = (id) => document.getElementById(id);
 let D, S;
@@ -43,14 +43,14 @@ const last = (id) => fmt.last(name(id));
 function refresh() {
   applyTeamColors(S.team, S.opp);
   $('team').value = S.team; $('opp').value = S.opp;
-  slots('my-slots', S.mine, (i, id) => {
+  slots('my-slots', S.mine, teamPool(D.teams, S.team, S.mine), (i, id) => {
     if (S.theirs.includes(id)) return false;
     const old = S.mine[i];
     S.mine[i] = id;
     if (S.assign) { S.assign.set(id, S.assign.get(old)); S.assign.delete(old); }
     return true;
   });
-  slots('their-slots', S.theirs, (i, id) => {
+  slots('their-slots', S.theirs, teamPool(D.teams, S.opp, S.theirs), (i, id) => {
     if (S.mine.includes(id)) return false;
     const old = S.theirs[i];
     S.theirs[i] = id;
@@ -60,7 +60,7 @@ function refresh() {
   compute();
 }
 
-function slots(elId, arr, onSet) {
+function slots(elId, arr, pool, onSet) {
   $(elId).innerHTML = arr.map((id, i) =>
     `<div class="slot"><span class="pos">${i + 1}</span><input type="search" data-i="${i}" value="${esc(D.byId.get(id) ? label(D.byId.get(id)) : '')}"></div>`).join('');
   $(elId).querySelectorAll('input').forEach((inp) => playerSearch(inp, D, (id) => {
@@ -68,7 +68,7 @@ function slots(elId, arr, onSet) {
     if (arr.includes(id) && arr[i] !== id) { inp.classList.add('bad'); return; }
     if (!onSet(i, id)) { inp.classList.add('bad'); return; }
     compute();
-  }));
+  }, pool));
 }
 
 const compute = debounce(() => {
