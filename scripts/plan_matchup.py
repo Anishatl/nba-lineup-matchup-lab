@@ -43,23 +43,42 @@ def parse_args():
     return p.parse_args()
 
 
-def resolve(cur, token: str) -> int:
+def resolve(cur, token: str, pool: list[int] | None = None) -> int:
+    """Find a player by ID or name. Order of preference:
+    1) players in `pool` (e.g. your roster / their lineup), 2) recent players, 3) anyone.
+    Within each, an exact full-name or exact last-name match beats a partial match,
+    so 'Daniels' finds Dyson Daniels, not Jaden McDaniels."""
     if token.isdigit():
         return int(token)
-    cur.execute("SELECT player_id, full_name FROM players WHERE full_name ILIKE %s", (f"%{token}%",))
+    t = token.strip().lower()
+    cur.execute("""SELECT p.player_id, p.full_name,
+                          EXISTS (SELECT 1 FROM player_team_season s WHERE s.player_id = p.player_id
+                                  AND s.season = (SELECT MAX(season) FROM games)) AS recent
+                   FROM players p WHERE p.full_name ILIKE %s""", (f"%{token}%",))
     hits = cur.fetchall()
-    if len(hits) == 1:
-        return hits[0][0]
-    # prefer players who actually appear in recent data
-    cur.execute("""SELECT DISTINCT p.player_id, p.full_name FROM players p
-                   JOIN player_team_season s USING (player_id)
-                   WHERE p.full_name ILIKE %s AND s.season = (SELECT MAX(season) FROM games)""",
-                (f"%{token}%",))
-    recent = cur.fetchall()
-    if len(recent) == 1:
-        return recent[0][0]
-    options = ", ".join(n for _, n in (recent or hits)[:8]) or "none"
-    raise SystemExit(f"'{token}' matched {len(recent or hits)} players ({options}). Be more specific.")
+    if not hits:
+        raise SystemExit(f"No player matches '{token}'.")
+
+    def quality(name: str) -> int:
+        n = name.lower()
+        if n == t:
+            return 3
+        parts = n.split()
+        if parts and (parts[-1] == t or " ".join(parts[1:]) == t):
+            return 2
+        if any(word == t for word in parts):
+            return 1
+        return 0
+
+    for scope in ([h for h in hits if pool and h[0] in pool], [h for h in hits if h[2]], hits):
+        if not scope:
+            continue
+        best = max(quality(h[1]) for h in scope)
+        top = [h for h in scope if quality(h[1]) == best]
+        if len(top) == 1:
+            return top[0][0]
+    options = ", ".join(h[1] for h in hits[:8])
+    raise SystemExit(f"'{token}' matched {len(hits)} players ({options}). Be more specific.")
 
 
 def roster(cur, team, season, min_minutes, max_n) -> list[int]:
@@ -94,9 +113,11 @@ def main():
         engine = store.load_engine(conn)
         engine.matchup.size_strength = args.size_strength
 
-        theirs = ([resolve(cur, t) for t in args.opp_players] if args.opp_players
+        opp_pool = roster(cur, args.opp, season, 0, 30)
+        my_pool = roster(cur, args.team, season, 0, 30)
+        theirs = ([resolve(cur, t, opp_pool) for t in args.opp_players] if args.opp_players
                   else most_used_lineup(cur, args.opp, season))
-        mine = ([resolve(cur, t) for t in args.my_players] if args.my_players
+        mine = ([resolve(cur, t, my_pool) for t in args.my_players] if args.my_players
                 else roster(cur, args.team, season, args.min_minutes, args.max_roster))
         if len(mine) < 5:
             raise SystemExit("Need at least 5 of your players.")
@@ -120,7 +141,7 @@ def main():
                 if "=" not in pair:
                     raise SystemExit(f"Bad --assign entry '{pair}'. Use MINE=THEIRS.")
                 a, b = pair.split("=", 1)
-                assignment[resolve(cur, a)] = resolve(cur, b)
+                assignment[resolve(cur, a, mine)] = resolve(cur, b, theirs)
             bad = [nm(p) for p in assignment.values() if p not in theirs]
             missing = [nm(p) for p in mine if p not in assignment]
             if bad or missing or len(set(assignment.values())) != 5:
