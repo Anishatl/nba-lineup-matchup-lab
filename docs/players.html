@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Players · NBA Lineup &amp; Matchup Lab</title>
+  <meta name="description" content="RAPM, calibrated defensive impact, and one-on-one matchup effects for every NBA player.">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <nav id="nav"></nav>
+  <main>
+    <div class="scorebar">
+      <div class="side team"><select id="team" aria-label="Team filter"></select></div>
+      <div class="title">Player ratings<small id="season"></small></div>
+    </div>
+    <p class="lede">Impact per 100 possessions. RAPM is centered so 0 is the average player on the floor, and higher is better on both ends. Points saved ranks defenders by what the calibrated model actually uses: mostly D-RAPM, plus one-on-one matchup defense.</p>
+
+    <div class="filters">
+      <label>Search <input type="search" id="q" placeholder="Player name"></label>
+      <label>Min possessions <input type="number" id="minposs" value="3000" step="500" min="0" style="width:120px"></label>
+      <label class="check"><input type="checkbox" id="active" checked> Active this season</label>
+    </div>
+
+    <div class="panel tablewrap">
+      <table>
+        <thead><tr id="head"></tr></thead>
+        <tbody id="rows"><tr><td class="loading">Loading…</td></tr></tbody>
+      </table>
+      <p class="note" id="count"></p>
+    </div>
+
+    <section class="panel">
+      <h2 class="sec">Reading the flags</h2>
+      <p><span class="tag switched_off">Switched off</span> Great one-on-one numbers but weak D-RAPM. Matchup tracking credits points to whoever is guarding when the shot goes up, so defenders that offenses screen and switch away from can look like stoppers.</p>
+      <p><span class="tag help_rim">Help / rim</span> Strong D-RAPM but only average one-on-one. Their value is in help defense and rim protection, which one-on-one tracking misses.</p>
+    </section>
+  </main>
+  <footer id="foot"></footer>
+  <script type="module" src="js/players.js"></script>
+</body>
+</html>

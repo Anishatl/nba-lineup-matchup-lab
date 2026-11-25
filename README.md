@@ -172,6 +172,23 @@ Points allowed use your assignment; points scored assume the opponent defends yo
 The calibration weight on matchup defense is constrained to be ≥ 0 (a negative weight would mean worse
 matchups lead to fewer points allowed).
 
+## Dashboard (GitHub Pages)
+
+Static site in `docs/`: **Game plan** (best lineups + top-2 assignments vs. any opponent five),
+**Sandbox** (pick your five and who guards whom; see the cost vs. the best assignment on a half-court
+diagram) and **Players** (RAPM, calibrated defensive impact, one-on-one effects, flags).
+
+All the math runs in the browser (`docs/js/model.js`) from small JSON files, so there's no server.
+
+```bash
+python src/export_results.py        # writes docs/data/*.json from the latest model runs
+node scripts/check_js.mjs           # checks the browser model against Python-computed cases
+python -m http.server -d docs 8000  # preview at http://localhost:8000
+git add docs/data && git commit -m "Update data" && git push
+```
+
+**Weekly update:** `run_pipeline.py` → `run_rapm.py` → `run_matchups.py` → `export_results.py` → push.
+
 ## Starter SQL
 
 ```bash
@@ -218,7 +235,7 @@ data/raw/              cached raw responses (git-ignored)
 - [x] **Step 1: Data pipeline.** 3,934 games validated against box scores. Postgres schema, play-by-play → stints, matchup tracking, starter SQL
 - [x] **Step 2: RAPM.** Ridge regression on stints, cross-validated penalty, out-of-sample check vs. raw +/-
 - [x] **Step 3: Matchup model.** Shrunk defender-vs-scorer PPP, model for unseen pairs, Hungarian assignment, calibration
-- [ ] **Step 4: Dashboard.** Team picker, lineup explorer, matchup planner with defensive-emphasis slider, player cards
+- [x] **Step 4: Dashboard.** (Game plan, Sandbox, Players; Teams and Methodology next) Team picker, lineup explorer, matchup planner with defensive-emphasis slider, player cards
 
 ## Data coverage & validation
 

@@ -3,34 +3,59 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>NBA Lineup &amp; Matchup Lab</title>
-  <style>
-    :root { --bg: #0f1115; --fg: #e8e8ea; --muted: #9aa0a6; --accent: #e03a3e; }
-    * { box-sizing: border-box; }
-    body { margin: 0; min-height: 100vh; display: grid; place-items: center;
-           background: var(--bg); color: var(--fg);
-           font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
-    main { max-width: 640px; padding: 2rem; }
-    h1 { font-size: 2.2rem; margin: 0 0 .5rem; letter-spacing: -0.02em; }
-    .tag { display: inline-block; font-size: .8rem; padding: .2rem .6rem; border-radius: 999px;
-           border: 1px solid var(--accent); color: var(--accent); margin-bottom: 1rem; }
-    p { color: var(--muted); line-height: 1.6; }
-    ul { color: var(--muted); line-height: 1.8; padding-left: 1.2rem; }
-    a { color: var(--fg); }
-  </style>
+  <title>Game plan · NBA Lineup &amp; Matchup Lab</title>
+  <meta name="description" content="Pick any NBA team and opponent: every 5-man lineup ranked by RAPM and a calibrated matchup model, with the best defensive assignments.">
+  <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
+  <nav id="nav"></nav>
   <main>
-    <span class="tag">In progress</span>
-    <h1>NBA Lineup &amp; Matchup Lab</h1>
-    <p>Pick any NBA team and see its best lineups and optimal defensive matchups,
-       built from three seasons of play-by-play and player-tracking data.</p>
-    <ul>
-      <li><strong>Lineup explorer:</strong> every 5-man combination ranked by projected net rating (RAPM)</li>
-      <li><strong>Matchup planner:</strong> who should guard whom against any opponent (Hungarian algorithm)</li>
-      <li><strong>Player impact:</strong> offensive and defensive ratings for every player</li>
-    </ul>
-    <p>Code: <a href="https://github.com/Anishatl/nba-lineup-matchup-lab">github.com/Anishatl/nba-lineup-matchup-lab</a></p>
+    <div class="scorebar">
+      <div class="side team"><select id="team" aria-label="Your team"></select></div>
+      <div class="title">Game plan<small id="season"></small></div>
+      <div class="side opp"><span class="vs">vs</span><select id="opp" aria-label="Opponent"></select></div>
+    </div>
+    <p class="lede" id="lede">Every five-man combination from your roster, ranked against the opponent's lineup, with the defensive assignments that give up the fewest points.</p>
+
+    <div class="strip">
+      <label for="slider">Defensive emphasis <input type="range" id="slider" min="0.5" max="2" step="0.1" value="1"><output id="slider-out">1.0×</output></label>
+      <label for="size">Size effects <input type="range" id="size" min="0" max="1.5" step="0.1" value="1"><output id="size-out">100%</output></label>
+    </div>
+
+    <div class="grid">
+      <aside>
+        <section class="panel">
+          <h2 class="sec opp">Their five <span class="aside">any player</span></h2>
+          <div id="their-slots"></div>
+          <div class="btns"><button id="reset-their">Most-used lineup</button></div>
+        </section>
+        <section class="panel">
+          <h2 class="sec">Your players <span class="aside" id="roster-count"></span></h2>
+          <div class="roster" id="roster"></div>
+          <div class="slot" style="margin-top:10px"><input type="search" id="add-player" placeholder="Add any player, e.g. Alex Caruso"></div>
+          <p class="note">Up to 15 players. Every 5-man combination is tested.</p>
+        </section>
+      </aside>
+
+      <section>
+        <section class="panel">
+          <h2 class="sec">Best lineups <span class="aside">pts per 100 possessions · click a row</span></h2>
+          <div class="tablewrap"><table>
+            <thead><tr><th>#</th><th>Lineup</th><th class="n">Net</th><th class="n">Scored</th><th class="n">Allowed</th></tr></thead>
+            <tbody id="lineups"><tr><td colspan="5" class="loading">Loading…</td></tr></tbody>
+          </table></div>
+          <p class="note">Net = scored − emphasis × allowed, relative to an average matchup. Scoring uses RAPM; defense blends D-RAPM with the matchup model, weighted by out-of-sample calibration.</p>
+        </section>
+        <section class="panel">
+          <h2 class="sec">Who guards whom <span class="aside" id="assign-for"></span></h2>
+          <p class="note" style="margin:0 0 4px">Each card: predicted points per 100 matchup possessions for the scorer he guards.</p>
+          <div id="assignments"></div>
+          <div class="btns"><a id="to-sandbox" href="sandbox.html"><button class="primary">Try your own matchups in the sandbox</button></a></div>
+        </section>
+      </section>
+    </div>
   </main>
+  <footer id="foot"></footer>
+  <script type="module" src="js/gameplan.js"></script>
 </body>
 </html>

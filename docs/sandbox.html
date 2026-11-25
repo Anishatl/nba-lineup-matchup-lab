@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sandbox · NBA Lineup &amp; Matchup Lab</title>
+  <meta name="description" content="Pick your five, choose who guards whom, and see what it costs against the best assignment.">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <nav id="nav"></nav>
+  <main>
+    <div class="scorebar">
+      <div class="side team"><select id="team" aria-label="Your team"></select></div>
+      <div class="title">Matchup sandbox<small id="season"></small></div>
+      <div class="bug"><b id="bug-net">—</b><span>net</span></div>
+      <div class="side opp"><span class="vs">vs</span><select id="opp" aria-label="Opponent"></select></div>
+    </div>
+    <p class="lede">Pick any five, set who guards whom, and see what your setup is worth, and what it gives up against the best assignment for the same five players.</p>
+
+    <div class="strip">
+      <label for="slider">Defensive emphasis <input type="range" id="slider" min="0.5" max="2" step="0.1" value="1"><output id="slider-out">1.0×</output></label>
+      <label for="size">Size effects <input type="range" id="size" min="0" max="1.5" step="0.1" value="1"><output id="size-out">100%</output></label>
+    </div>
+
+    <div class="grid">
+      <aside>
+        <section class="panel">
+          <h2 class="sec">Your five</h2>
+          <div id="my-slots"></div>
+          <div class="btns"><button id="reset-mine">Most-used lineup</button></div>
+        </section>
+        <section class="panel">
+          <h2 class="sec opp">Their five</h2>
+          <div id="their-slots"></div>
+          <div class="btns"><button id="reset-their">Most-used lineup</button></div>
+        </section>
+      </aside>
+
+      <section>
+        <section class="panel">
+          <div class="scoreline">
+            <div><b id="net">—</b><span>Net</span></div>
+            <div><b id="scored">—</b><span>Scored / 100</span></div>
+            <div><b id="allowed">—</b><span>Allowed / 100</span></div>
+          </div>
+          <div class="verdict" id="verdict"></div>
+          <h2 class="sec">Who guards whom <span class="aside">pick a matchup for each of your players</span></h2>
+          <div id="assign"></div>
+          <div class="btns"><button class="primary" id="use-best">Use best assignment</button></div>
+        </section>
+        <section class="court-wrap">
+          <svg class="court" id="court" viewBox="0 0 500 390" role="img" aria-label="Half-court diagram of the matchups"></svg>
+        </section>
+      </section>
+    </div>
+  </main>
+  <footer id="foot"></footer>
+  <script type="module" src="js/sandbox.js"></script>
+</body>
+</html>
