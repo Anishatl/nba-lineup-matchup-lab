@@ -18,7 +18,7 @@ import pandas as pd  # noqa: E402
 
 import config  # noqa: E402
 from src import db  # noqa: E402
-from src.matchups import calibrate, model as mm, store, validate  # noqa: E402
+from src.matchups import calibrate, defense, model as mm, store, validate  # noqa: E402
 from src.rapm.build_matrix import season_weights  # noqa: E402
 
 REPORT = config.ROOT / "reports" / "matchup_validation.md"
@@ -40,20 +40,38 @@ def parse_args():
     return p.parse_args()
 
 
-def print_leaders(conn, model: mm.MatchupModel, min_poss: float, n: int = 15):
-    eff = model.total_effects()
-    eff["def_poss"], eff["off_poss"] = model.poss_def, model.poss_off
+def _names(conn, ids) -> dict:
     with conn.cursor() as cur:
         cur.execute("SELECT player_id, full_name FROM players WHERE player_id = ANY(%s)",
-                    ([int(x) for x in eff.player_id],))
-        eff["name"] = eff.player_id.map(dict(cur.fetchall()))
-    fmt = {"defender_pct": "{:+.1f}%".format, "scorer_pct": "{:+.1f}%".format,
-           "def_poss": "{:,.0f}".format, "off_poss": "{:,.0f}".format}
-    d = eff[eff.def_poss >= min_poss].sort_values("defender_pct")
-    s = eff[eff.off_poss >= min_poss].sort_values("scorer_pct", ascending=False)
-    print(f"\nBest one-on-one defenders (min {min_poss:,.0f} matchup poss).")
-    print("defender_pct = change in his man's scoring vs. an average defender, size terms included")
-    print(d.head(n)[["name", "defender_pct", "def_poss"]].to_string(index=False, formatters=fmt))
+                    ([int(x) for x in ids],))
+        return dict(cur.fetchall())
+
+
+def print_leaders(conn, model: mm.MatchupModel, impact, min_poss: float, n: int = 15):
+    names = _names(conn, model.player_ids)
+    imp = impact.copy()
+    imp["name"] = imp.player_id.map(names)
+    q = imp[imp.def_poss >= min_poss].sort_values("pts_saved", ascending=False)
+    fmt = {"pts_saved": "{:+.2f}".format, "from_rapm": "{:+.2f}".format,
+           "from_matchup": "{:+.2f}".format, "defender_pct": "{:+.1f}%".format,
+           "def_poss": "{:,.0f}".format, "scorer_pct": "{:+.1f}%".format, "off_poss": "{:,.0f}".format}
+    cols = ["name", "pts_saved", "from_rapm", "from_matchup", "defender_pct", "flag"]
+    print(f"\nBest defenders by calibrated impact (pts saved per 100; min {min_poss:,.0f} matchup poss)")
+    print("pts_saved = from_rapm (c x D-RAPM) + from_matchup (b x one-on-one effect)")
+    print(q.head(n)[cols].to_string(index=False, formatters=fmt))
+    flagged = q[q.flag == "switched_off"].sort_values("defender_pct").head(8)
+    if len(flagged):
+        print("\nGreat one-on-one numbers but weak D-RAPM (likely switched off / hidden):")
+        print(flagged[["name", "defender_pct", "from_rapm", "pts_saved"]].to_string(index=False, formatters=fmt))
+    helpers = q[q.flag == "help_rim"].head(8)
+    if len(helpers):
+        print("\nStrong D-RAPM but only average one-on-one (help / rim defenders):")
+        print(helpers[["name", "from_rapm", "defender_pct", "pts_saved"]].to_string(index=False, formatters=fmt))
+
+    s = imp[imp.off_poss >= min_poss].sort_values("scorer_pct", ascending=False) if "off_poss" in imp else None
+    if s is None:
+        imp["off_poss"] = model.poss_off
+        s = imp[imp.off_poss >= min_poss].sort_values("scorer_pct", ascending=False)
     print(f"\nToughest scorers to guard (min {min_poss:,.0f} matchup poss)")
     print(s.head(n)[["name", "scorer_pct", "off_poss"]].to_string(index=False, formatters=fmt))
 
@@ -126,11 +144,16 @@ def main():
         print(cal.table.to_string(index=False, float_format=lambda x: f"{x:.3f}"))
         report.append(cal.to_markdown())
 
+        with conn.cursor() as cur:
+            cur.execute("""SELECT player_id, d_rapm FROM player_ratings
+                           WHERE run_id = (SELECT MAX(run_id) FROM model_runs WHERE model = 'rapm')""")
+            d_rapm = pd.Series({int(p): float(d) for p, d in cur.fetchall()})
+        impact = defense.defensive_impact(model, d_rapm, c, args.min_poss)
         run_id = store.save(conn, model, args.seasons, weights, cv_score, len(rows),
-                            calibration=c, home=cal.home, notes=args.kind)
+                            calibration=c, home=cal.home, notes=args.kind, impact=impact)
         conn.commit()
         print(f"\nSaved matchup run {run_id} ({args.kind})")
-        print_leaders(conn, model, args.min_poss)
+        print_leaders(conn, model, impact, args.min_poss)
         print_team_context(conn, model)
 
         REPORT.parent.mkdir(parents=True, exist_ok=True)

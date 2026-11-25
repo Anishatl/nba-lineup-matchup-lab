@@ -123,7 +123,13 @@ Run `run_rapm.py` first.
   matchup for that team equally, so it can't change which lineup or assignment is best). An offensive
   team-season term was tested on synthetic data and dropped: it took credit away from star scorers.
   `--no-context` turns it off.
-- **Rankings** use each player's *total* effect (size terms included) against a typical mix of opponents,
+- **Best-defenders ranking = calibrated defensive impact**: points saved per 100 possessions,
+  `c × D-RAPM + b × one-on-one matchup effect`, using the weights from the held-out calibration.
+  Matchup tracking credits points to whoever is guarding at the end of a possession, so defenders who
+  get screened off (and switched away from) can look like stoppers; D-RAPM, measured from real on-floor
+  points allowed, isn't fooled by that. Players are flagged `switched_off` (great one-on-one numbers,
+  weak D-RAPM) or `help_rim` (strong D-RAPM, average one-on-one).
+- **Scorer rankings** and the one-on-one numbers use each player's *total* effect (size terms included) against a typical mix of opponents,
   as a percentage.
 - Rows are aggregated to (scorer, defender, season) for fitting (identical result, much faster);
   cross-validation still splits raw rows by game. Poisson is scored by deviance.

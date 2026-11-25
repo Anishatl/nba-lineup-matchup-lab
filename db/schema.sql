@@ -163,3 +163,7 @@ CREATE TABLE IF NOT EXISTS model_params (
 -- Full effect of each player incl. size/style terms, as % vs. average (added with the Poisson model)
 ALTER TABLE matchup_ratings ADD COLUMN IF NOT EXISTS defender_pct NUMERIC;  -- negative = better defender
 ALTER TABLE matchup_ratings ADD COLUMN IF NOT EXISTS scorer_pct   NUMERIC;  -- positive = tougher scorer
+
+-- Calibrated defensive impact (pts per 100 saved; c*D-RAPM + b*matchup) and disagreement flag
+ALTER TABLE matchup_ratings ADD COLUMN IF NOT EXISTS pts_saved NUMERIC;   -- higher = better defender
+ALTER TABLE matchup_ratings ADD COLUMN IF NOT EXISTS def_flag  TEXT;      -- 'switched_off' | 'help_rim' | ''

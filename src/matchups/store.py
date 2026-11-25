@@ -12,7 +12,7 @@ from src.matchups.optimize import Calibration, Engine
 
 
 def save(conn, model: mm.MatchupModel, seasons, weights, cv_rmse, n_rows,
-         calibration=None, home=None, notes="") -> int:
+         calibration=None, home=None, notes="", impact: pd.DataFrame | None = None) -> int:
     ordered = sorted(seasons)
     with conn.cursor() as cur:
         cur.execute(
@@ -24,16 +24,21 @@ def save(conn, model: mm.MatchupModel, seasons, weights, cv_rmse, n_rows,
         run_id = cur.fetchone()[0]
 
     f = model.feats.reindex(model.player_ids)
-    eff = model.total_effects()
+    eff = impact if impact is not None else model.total_effects()
+    eff = eff.set_index("player_id").reindex(model.player_ids)
+    saved = eff["pts_saved"] if "pts_saved" in eff else pd.Series(np.nan, index=eff.index)
+    flag = eff["flag"] if "flag" in eff else pd.Series("", index=eff.index)
     rows = [(run_id, int(p), float(s), float(d), float(po), float(pd_),
-             float(h), float(w), float(t), float(dp), float(sp_))
-            for p, s, d, po, pd_, h, w, t, dp, sp_ in zip(
+             float(h), float(w), float(t), float(dp), float(sp_),
+             None if pd.isna(sv) else float(sv), fl or "")
+            for p, s, d, po, pd_, h, w, t, dp, sp_, sv, fl in zip(
                 model.player_ids, model.scorer, model.defender, model.poss_off, model.poss_def,
                 f["height_inches"], f["weight_lbs"], f["three_rate"],
-                eff["defender_pct"], eff["scorer_pct"])]
+                eff["defender_pct"], eff["scorer_pct"], saved, flag)]
     db.upsert(conn, "matchup_ratings",
               ["run_id", "player_id", "scorer_skill", "defender_skill", "off_poss", "def_poss",
-               "height_inches", "weight_lbs", "three_rate", "defender_pct", "scorer_pct"],
+               "height_inches", "weight_lbs", "three_rate", "defender_pct", "scorer_pct",
+               "pts_saved", "def_flag"],
               rows, conflict=["run_id", "player_id"])
 
     params = model.params()

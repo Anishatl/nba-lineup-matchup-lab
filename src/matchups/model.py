@@ -306,7 +306,10 @@ class MatchupModel:
         base_off = float(np.sum(off_val * self.poss_off) / np.sum(self.poss_off))
         return pd.DataFrame({"player_id": ids,
                              "defender_pct": 100 * (def_val / base_def - 1),
-                             "scorer_pct": 100 * (off_val / base_off - 1)})
+                             "scorer_pct": 100 * (off_val / base_off - 1),
+                             # same effects in points per 100 matchup possessions
+                             "defender_pts": def_val - base_def,
+                             "scorer_pts": off_val - base_off})
 
     def params(self) -> dict:
         p = {"intercept": self.intercept, "alpha": self.alpha,
