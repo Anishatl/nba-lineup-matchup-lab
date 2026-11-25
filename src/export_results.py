@@ -79,6 +79,34 @@ def export_meta(cur, engine, rapm_run, m_run, season):
     }
 
 
+def export_coverage(cur):
+    """Games per season, stints loaded, exact box-score matches, matchup coverage."""
+    cur.execute("""
+        WITH sp AS (SELECT game_id, SUM(home_pts) hp, SUM(away_pts) ap FROM stints GROUP BY game_id),
+             mg AS (SELECT DISTINCT game_id FROM matchups)
+        SELECT g.season, COUNT(*) AS games, COUNT(sp.game_id) AS stints,
+               SUM(CASE WHEN sp.hp = g.home_pts AND sp.ap = g.away_pts THEN 1 ELSE 0 END) AS exact,
+               COUNT(mg.game_id) AS matchups
+        FROM games g LEFT JOIN sp USING (game_id) LEFT JOIN mg USING (game_id)
+        GROUP BY g.season ORDER BY g.season""")
+    rows = [{"season": s, "games": int(g), "stints": int(st), "exact": int(e or 0), "matchups": int(m)}
+            for s, g, st, e, m in cur.fetchall()]
+    cur.execute("SELECT COUNT(*) FROM stints")
+    n_stints = cur.fetchone()[0]
+    cur.execute("SELECT COUNT(*) FROM matchups")
+    n_matchups = cur.fetchone()[0]
+    return {"seasons": rows, "stint_rows": int(n_stints), "matchup_rows": int(n_matchups)}
+
+
+def export_validation():
+    out = {}
+    for key, name in (("rapm", "rapm_validation.json"), ("matchup", "matchup_validation.json")):
+        path = config.ROOT / "reports" / name
+        if path.exists():
+            out[key] = json.loads(path.read_text(encoding="utf-8"))
+    return out
+
+
 def export_players(cur, rapm_run, m_run, season):
     cur.execute("""
         SELECT p.player_id, p.full_name, p.position, r.o_rapm, r.d_rapm, r.off_poss, r.def_poss
@@ -205,6 +233,11 @@ def main():
         meta = export_meta(cur, engine, rapm_run, m_run, season)
         players, centering = export_players(cur, rapm_run, m_run, season)
         meta["rapm"].update(centering)
+        meta["coverage"] = export_coverage(cur)
+        meta["validation"] = export_validation()
+        if not meta["validation"]:
+            print("  note: no reports/*.json yet; run run_rapm.py --validate and run_matchups.py "
+                  "to show validation results on the Methodology page")
         teams = export_teams(cur, season, m_run)
         _write("meta.json", meta)
         _write("players.json", players)

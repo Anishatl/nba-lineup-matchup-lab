@@ -1,0 +1,28 @@
+{
+ "train": [
+  "2023-24",
+  "2024-25"
+ ],
+ "test": "2025-26",
+ "alpha": 3162.28,
+ "rows": [
+  {
+   "predictor": "Baseline (league avg)",
+   "stint_rmse": 66.305,
+   "game_rmse": 16.664,
+   "game_corr": -0.029
+  },
+  {
+   "predictor": "Raw +/-",
+   "stint_rmse": 66.243,
+   "game_rmse": 15.993,
+   "game_corr": 0.285
+  },
+  {
+   "predictor": "RAPM",
+   "stint_rmse": 66.192,
+   "game_rmse": 15.612,
+   "game_corr": 0.341
+  }
+ ]
+}

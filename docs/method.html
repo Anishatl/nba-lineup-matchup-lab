@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Methodology · NBA Lineup &amp; Matchup Lab</title>
+  <meta name="description" content="How the NBA Lineup & Matchup Lab works: data pipeline, RAPM, a Poisson matchup model, calibration, and the lineup optimizer, with out-of-sample validation.">
+  <link rel="stylesheet" href="css/style.css">
+  <style>
+    main.doc > * { max-width: 880px; }
+    .doc h2.sec { margin-top: 34px; }
+    .doc p, .doc li { color: #d6d6d6; }
+    .doc ul { padding-left: 20px; }
+    .doc li { margin: 4px 0; }
+    .eq { background: var(--panel); border-left: 4px solid var(--team-hi); padding: 12px 16px; margin: 12px 0;
+      font: 14px/1.7 var(--mono); color: var(--text); overflow-x: auto; white-space: pre; }
+    .doc table { margin: 10px 0 6px; }
+    .doc td.hi { color: var(--text); font-weight: 500; }
+    .toc { display: flex; flex-wrap: wrap; gap: 6px 18px; margin: 4px 0 8px; }
+    .toc a { font: 600 15px var(--cond); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); text-decoration: none; }
+    .toc a:hover { color: var(--text); }
+    .callout { background: var(--slate); padding: 12px 16px; margin: 14px 0; }
+    .callout b { font: 600 16px var(--cond); letter-spacing: .05em; text-transform: uppercase; display: block; margin-bottom: 4px; }
+    .missing { color: var(--muted); font-style: italic; }
+  </style>
+</head>
+<body>
+  <nav id="nav"></nav>
+  <main class="doc">
+    <div class="scorebar">
+      <div class="side team">NBA</div>
+      <div class="title">How it works<small id="season"></small></div>
+    </div>
+    <p class="lede">The lab answers two coaching questions for any team and opponent: which five players should be on the floor, and who should guard whom. Every number on the site comes from models trained on NBA.com play-by-play and player-tracking data, and every model was tested on a season it never saw.</p>
+    <div class="toc">
+      <a href="#data">Data</a><a href="#rapm">RAPM</a><a href="#matchups">Matchup model</a>
+      <a href="#defense">Ranking defenders</a><a href="#calibration">Calibration</a><a href="#optimizer">Optimizer</a>
+      <a href="#limits">Limitations</a><a href="#repro">Reproduce</a>
+    </div>
+
+    <h2 class="sec" id="data">1 · Data</h2>
+    <p>A Python pipeline pulls every regular-season game from NBA.com into PostgreSQL. Play-by-play is split into <b>stints</b>: stretches of possessions with the same ten players on the floor, with possessions and points for each side. A second feed gives <b>matchup tracking</b>: for each game, every offensive player × defender pair, with matchup possessions and the scorer's points.</p>
+    <div id="coverage"></div>
+    <p>Every game's stint points are checked against the official box score. Three problems showed up and were fixed:</p>
+    <ul>
+      <li><b>About 5% of points were missing.</b> Lineups were read from the first event of each possession, which sometimes lists an incomplete lineup. Reading the first complete lineup anywhere in the possession brought dropped possessions to zero.</li>
+      <li><b>Overtime starters were unknown.</b> A player who's on the floor but never touches the ball is invisible to the play-by-play. The pipeline now asks NBA.com's time-ranged box score who played in the first seconds of that period and saves it as an override.</li>
+      <li><b>The 2026-27 feed format changed.</b> NBA's live feed began omitting player IDs on non-player events and sometimes points a rebound at a shot that doesn't exist. Two small patches to the parsing library restored those games.</li>
+    </ul>
+
+    <h2 class="sec" id="rapm">2 · RAPM: who helps the scoreboard</h2>
+    <p><b>Regularized adjusted plus-minus</b> asks how the score moves with each player on the floor, after accounting for all nine others. Each stint becomes two rows, one per team on offense:</p>
+    <div class="eq">pts per 100 = intercept + Σ O-rating (5 on offense) + Σ D-rating (5 on defense) + home</div>
+    <ul>
+      <li><b>Ridge regression</b> (an L2 penalty) pulls every rating toward zero until the data earns it. That handles noise (a 300-possession bench player can't post +12 by luck) and collinearity (teammates who always play together).</li>
+      <li>Rows are weighted by possessions × a <b>recency weight</b> (this season 1, last season ½, then ¼…).</li>
+      <li>The penalty is chosen by 5-fold cross-validation <b>split by game</b>, so stints from one game never sit in both training and test folds.</li>
+      <li>On the site, ratings are re-centered so 0 is the possession-weighted average player, and defense is flipped so higher is better.</li>
+    </ul>
+    <p><b>Out-of-sample test.</b> Train on earlier seasons, predict every stint of a season the model never saw, and compare with raw plus-minus:</p>
+    <div id="rapm-val"></div>
+
+    <h2 class="sec" id="matchups">3 · Matchup model: who guards whom</h2>
+    <p>For any scorer and defender, the model predicts the scorer's points per 100 matchup possessions, including pairs that have never faced each other. It's a <b>ridge-penalized Poisson regression</b>:</p>
+    <div class="eq">log(pts per matchup possession) = intercept + scorer skill + defender skill + size/style terms
+pts = base × scorer multiplier × defender multiplier × size multiplier</div>
+    <p><b>Why multiplicative?</b> In an additive model a defender takes away the same number of points from anyone he guards, so every assignment of the same five defenders adds up to the same total and there's nothing to optimize. In a Poisson model a defender removes a <i>share</i> of his man's scoring, which is worth more against a high-volume scorer. "Put your best defender on their best scorer" comes out of the math on its own:</p>
+    <table>
+      <thead><tr><th></th><th class="n">On star (34 pts/100)</th><th class="n">On role player (18)</th><th class="n">Assignments that differ</th></tr></thead>
+      <tbody>
+        <tr><td>Additive: defender −3 pts</td><td class="n">31.0</td><td class="n">15.0</td><td class="n">0 (every total is equal)</td></tr>
+        <tr><td>Poisson: defender ×0.88</td><td class="n">29.9</td><td class="n">15.8</td><td class="n hi">best defender → star</td></tr>
+      </tbody>
+    </table>
+    <ul>
+      <li><b>Size/style terms</b> are true pair interactions, centered on the average matchup: squared height mismatch (big gaps in either direction), and the scorer's 3-point rate × the defender's height. Plain height and weight differences were tested and dropped: they split into a defender part plus a scorer part, so the player skills absorb them.</li>
+      <li><b>Team defensive context.</b> Each row also gets a term for the defending team-season, so scheme and help defense aren't credited to whoever was nominally guarding. An offensive-team term was tested on synthetic data and dropped: a team's offense is largely its star, so it took credit from individual scorers.</li>
+      <li><b>Solver.</b> scikit-learn's general-purpose L-BFGS solver didn't converge on this sparse, badly conditioned problem (sample sizes vary 100× across players). With about 1,700 parameters the exact Hessian is cheap, so the model is fit with Newton's method (IRLS) in about 5 iterations per fit, verified against scikit-learn's solution.</li>
+      <li>Points come in 1s, 2s and 3s, so they vary more than Poisson assumes (overdispersion). That doesn't bias the estimates, only their standard errors, which aren't reported.</li>
+    </ul>
+    <div id="matchup-val"></div>
+
+    <h2 class="sec" id="defense">4 · Ranking defenders honestly</h2>
+    <p>Matchup tracking credits points to whoever is guarding when the shot goes up. Offenses attack weak defenders with screens that force switches, so the points land on the player who switched, and targeted defenders can look like stoppers. Elite rim protectors show the opposite pattern: they guard bigs who score efficiently near the rim and get switched onto guards, so their one-on-one numbers look poor even though they deter everyone.</p>
+    <p>So defenders are ranked by <b>calibrated defensive impact</b>: the same blend the validated model uses to predict points allowed.</p>
+    <div class="eq" id="saved-eq">points saved per 100 = c × D-RAPM + b × one-on-one matchup effect</div>
+    <p>Players are flagged <span class="tag switched_off">Switched off</span> when their one-on-one numbers are great but D-RAPM is weak, and <span class="tag help_rim">Help / rim</span> when D-RAPM is strong but one-on-one is only average. The flags are hints to look closer, not verdicts.</p>
+
+    <h2 class="sec" id="calibration">5 · Calibration: putting both models on one scale</h2>
+    <p>Both models are trained on earlier seasons. On the held-out season, every stint gets three terms, and a weighted least-squares fit decides how much each one deserves:</p>
+    <div class="eq">actual pts/100 = base + a·ΣO-RAPM + b·(best matchup defense − avg) + c·ΣD-RAPM + h·home</div>
+    <div id="cal"></div>
+    <p>Two-season RAPM overshoots the next season (players improve, decline and change roles), so <i>a</i> and <i>c</i> come out below 1, and calibration corrects for that automatically. <i>b</i> is small but positive: one-on-one matchup data adds real information beyond RAPM, at about a quarter of D-RAPM's weight. The weight on matchup defense is constrained to be at least 0.</p>
+
+    <h2 class="sec" id="optimizer">6 · The optimizer</h2>
+    <ul>
+      <li><b>Assignments.</b> For five defenders and five scorers the cost table is 5 × 5, and the best one-to-one assignment is found with the Hungarian algorithm (Python). In the browser, all 120 assignments are checked, which gives the same optimum.</li>
+      <li><b>Lineups.</b> Every five-man combination of your roster is scored against the opponent's five: calibrated points scored (assuming they defend you optimally) minus points allowed (with your best assignment).</li>
+      <li><b>Defensive emphasis</b> scales the points-allowed term: net = scored − emphasis × allowed. <b>Size effects</b> scales the size/style terms, to see how much a recommendation depends on them.</li>
+      <li>The browser model is checked against Python-computed test cases every time the data is exported.</li>
+    </ul>
+    <div class="callout"><b>What the numbers say</b>Who you put on the floor matters far more than exactly who guards whom. After calibration, swapping two assignments usually moves net rating by tenths of a point per 100 possessions; changing the lineup moves it by several points.</div>
+
+    <h2 class="sec" id="limits">7 · Limitations</h2>
+    <ul>
+      <li>Assignments are treated as fixed one-on-one matchups. Switching and help defense are only partly captured (through D-RAPM in calibration).</li>
+      <li>Matchup tracking is camera-based and gets noisy on switches. The switched-off flag is a heuristic.</li>
+      <li>The size-mismatch effect is predictive, but mismatches in the data often happen on switches, so part of it may reflect switching situations rather than size alone. The size-effects slider exists for that reason.</li>
+      <li>RAPM has no box-score prior, so players with few possessions sit close to average. Early in a season, the current year carries few games.</li>
+      <li>Fatigue, foul trouble, and minutes limits aren't modeled. The optimizer ranks lineups for a single stretch of play, not a full rotation.</li>
+    </ul>
+
+    <h2 class="sec" id="repro">8 · Reproduce it</h2>
+    <div class="eq">python scripts/run_pipeline.py        # NBA.com → PostgreSQL (resumable)
+python scripts/run_rapm.py --validate  # RAPM + out-of-sample test
+python scripts/run_matchups.py         # matchup model, validation, calibration
+python src/export_results.py           # JSON for this site
+node scripts/check_js.mjs              # browser model == Python model</div>
+    <p>Code, SQL, and reports: <a href="https://github.com/Anishatl/nba-lineup-matchup-lab">github.com/Anishatl/nba-lineup-matchup-lab</a></p>
+  </main>
+  <footer id="foot"></footer>
+  <script type="module" src="js/method.js"></script>
+</body>
+</html>

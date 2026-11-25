@@ -7,6 +7,7 @@ Examples:
     python scripts/run_rapm.py --decay 1.0           # no recency weighting
 """
 import argparse
+import json
 import sys
 from pathlib import Path
 
@@ -17,6 +18,7 @@ from src import db  # noqa: E402
 from src.rapm import build_matrix, fit, save, validate  # noqa: E402
 
 REPORT = config.ROOT / "reports" / "rapm_validation.md"
+REPORT_JSON = config.ROOT / "reports" / "rapm_validation.json"
 
 
 def parse_args():
@@ -74,6 +76,9 @@ def main():
             print(result.table.to_string(index=False, float_format=lambda x: f"{x:.3f}"))
             REPORT.parent.mkdir(parents=True, exist_ok=True)
             REPORT.write_text(result.to_markdown(), encoding="utf-8")
+            REPORT_JSON.write_text(json.dumps({
+                "train": result.train_seasons, "test": result.test_season, "alpha": result.alpha,
+                "rows": result.table.round(4).to_dict("records")}, indent=1), encoding="utf-8")
             print(f"\nSaved {REPORT.relative_to(config.ROOT)}")
 
 

@@ -8,6 +8,7 @@ Examples:
     python scripts/run_matchups.py --skip-validate  # faster: no model comparison
 """
 import argparse
+import json
 import sys
 from pathlib import Path
 
@@ -22,6 +23,7 @@ from src.matchups import calibrate, defense, model as mm, store, validate  # noq
 from src.rapm.build_matrix import season_weights  # noqa: E402
 
 REPORT = config.ROOT / "reports" / "matchup_validation.md"
+REPORT_JSON = config.ROOT / "reports" / "matchup_validation.json"
 
 
 def parse_args():
@@ -116,6 +118,7 @@ def main():
             print("size/style weights:", {n: round(float(w), 3) for n, w in zip(mm.FEATURES, model.feat_coef)})
 
         report = []
+        summary = json.loads(REPORT_JSON.read_text(encoding="utf-8")) if REPORT_JSON.exists() else {}
         val_alpha = alpha
         if not args.skip_validate:
             print()
@@ -125,6 +128,10 @@ def main():
             print()
             print(v.table.to_string(index=False, float_format=lambda x: f"{x:.4f}"))
             report.append(v.to_markdown())
+            summary["validation"] = {
+                "train": v.train_seasons, "test": v.test_season, "alphas": v.alphas,
+                "size_effects_pct": {n: round(float(100 * (np.exp(w) - 1)), 2) for n, w in zip(mm.FEATURES, v.feat_coef)},
+                "rows": v.table.round(4).to_dict("records")}
 
         with conn.cursor() as cur:
             cur.execute("SELECT alpha FROM model_runs WHERE model = 'rapm' ORDER BY run_id DESC LIMIT 1")
@@ -143,6 +150,11 @@ def main():
         print(f"  base={c.base:.2f}  a={c.a:.3f}  b={c.b:.3f}  c={c.c:.3f}  home={cal.home:+.2f}")
         print(cal.table.to_string(index=False, float_format=lambda x: f"{x:.3f}"))
         report.append(cal.to_markdown())
+        summary["calibration"] = {"train": args.train, "test": args.test,
+                                  "base": c.base, "a": c.a, "b": c.b, "c": c.c, "home": cal.home,
+                                  "rows": cal.table.round(4).to_dict("records")}
+        summary["size_effects_pct"] = {n: round(float(100 * (np.exp(w) - 1)), 2)
+                                       for n, w in zip(mm.FEATURES, model.feat_coef)}
 
         with conn.cursor() as cur:
             cur.execute("""SELECT player_id, d_rapm FROM player_ratings
@@ -158,6 +170,7 @@ def main():
 
         REPORT.parent.mkdir(parents=True, exist_ok=True)
         REPORT.write_text("\n".join(report), encoding="utf-8")
+        REPORT_JSON.write_text(json.dumps(summary, indent=1), encoding="utf-8")
         print(f"\nSaved {REPORT.relative_to(config.ROOT)}")
 
 

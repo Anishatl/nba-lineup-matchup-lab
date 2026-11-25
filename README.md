@@ -187,6 +187,10 @@ python -m http.server -d docs 8000  # preview at http://localhost:8000
 git add docs/data && git commit -m "Update data" && git push
 ```
 
+The **How it works** page (`docs/method.html`) reads data coverage, validation and calibration results
+from `meta.json`; `run_rapm.py --validate` and `run_matchups.py` save them to `reports/*.json` and the
+export copies them in, so the page always shows the latest run.
+
 **Weekly update:** `run_pipeline.py` → `run_rapm.py` → `run_matchups.py` → `export_results.py` → push.
 
 ## Starter SQL
@@ -235,7 +239,7 @@ data/raw/              cached raw responses (git-ignored)
 - [x] **Step 1: Data pipeline.** 3,934 games validated against box scores. Postgres schema, play-by-play → stints, matchup tracking, starter SQL
 - [x] **Step 2: RAPM.** Ridge regression on stints, cross-validated penalty, out-of-sample check vs. raw +/-
 - [x] **Step 3: Matchup model.** Shrunk defender-vs-scorer PPP, model for unseen pairs, Hungarian assignment, calibration
-- [x] **Step 4: Dashboard.** (Game plan, Sandbox, Players; Teams and Methodology next) Team picker, lineup explorer, matchup planner with defensive-emphasis slider, player cards
+- [x] **Step 4: Dashboard.** (Game plan, Sandbox, Players, How it works; Teams next) Team picker, lineup explorer, matchup planner with defensive-emphasis slider, player cards
 
 ## Data coverage & validation
 

@@ -18,6 +18,7 @@ export const PAGES = [
   ['index.html', 'Game plan'],
   ['sandbox.html', 'Sandbox'],
   ['players.html', 'Players'],
+  ['method.html', 'How it works'],
 ];
 
 export async function loadData() {

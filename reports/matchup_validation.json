@@ -1,0 +1,86 @@
+{
+ "validation": {
+  "train": [
+   "2023-24",
+   "2024-25"
+  ],
+  "test": "2025-26",
+  "alphas": {
+   "linear": 75.0,
+   "poisson": 1e-05,
+   "poisson+context": 1e-05
+  },
+  "rows": [
+   {
+    "model": "League average",
+    "rmse": 40.6363,
+    "deviance": 0.4466,
+    "pair_corr": 0.0084,
+    "n_pairs": 8425
+   },
+   {
+    "model": "Linear (additive), full",
+    "rmse": 39.8983,
+    "deviance": 0.4278,
+    "pair_corr": 0.355,
+    "n_pairs": 8425
+   },
+   {
+    "model": "Poisson: scorer only",
+    "rmse": 40.2442,
+    "deviance": 0.434,
+    "pair_corr": 0.3422,
+    "n_pairs": 8425
+   },
+   {
+    "model": "Poisson: scorer + defender",
+    "rmse": 39.9549,
+    "deviance": 0.4268,
+    "pair_corr": 0.3655,
+    "n_pairs": 8425
+   },
+   {
+    "model": "Poisson: full (+ size/style)",
+    "rmse": 39.8454,
+    "deviance": 0.4234,
+    "pair_corr": 0.3628,
+    "n_pairs": 8425
+   },
+   {
+    "model": "Poisson: full + team context",
+    "rmse": 39.8564,
+    "deviance": 0.4235,
+    "pair_corr": 0.3618,
+    "n_pairs": 8425
+   }
+  ]
+ },
+ "calibration": {
+  "train": [
+   "2023-24",
+   "2024-25"
+  ],
+  "test": "2025-26",
+  "base": 111.8,
+  "a": 0.549,
+  "b": 0.126,
+  "c": 0.45,
+  "home": 1.5,
+  "rows": [
+   {
+    "model": "RAPM only",
+    "game_rmse": 15.503,
+    "game_corr": 0.361
+   },
+   {
+    "model": "RAPM + matchup defense",
+    "game_rmse": 15.31,
+    "game_corr": 0.389
+   }
+  ]
+ },
+ "size_effects_pct": {
+  "mismatch_sq_10": 5.74,
+  "three_x_def_height": 8.83
+ }
+}
