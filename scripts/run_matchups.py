@@ -3,14 +3,18 @@
 Run scripts/run_rapm.py first (calibration uses the latest RAPM run's penalty).
 
 Examples:
-    python scripts/run_matchups.py                  # fit + validate + calibrate + save
-    python scripts/run_matchups.py --skip-validate  # fit + calibrate + save (faster)
+    python scripts/run_matchups.py                  # Poisson model: fit + validate + calibrate + save
+    python scripts/run_matchups.py --kind linear    # additive model instead
+    python scripts/run_matchups.py --skip-validate  # faster: no model comparison
 """
 import argparse
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+import numpy as np  # noqa: E402
+import pandas as pd  # noqa: E402
 
 import config  # noqa: E402
 from src import db  # noqa: E402
@@ -22,6 +26,7 @@ REPORT = config.ROOT / "reports" / "matchup_validation.md"
 
 def parse_args():
     p = argparse.ArgumentParser(description="Fit + calibrate the matchup model")
+    p.add_argument("--kind", choices=["poisson", "linear"], default="poisson")
     p.add_argument("--seasons", nargs="+", default=config.SEASONS)
     p.add_argument("--decay", type=float, default=0.5)
     p.add_argument("--folds", type=int, default=5)
@@ -34,19 +39,21 @@ def parse_args():
 
 
 def print_leaders(conn, model: mm.MatchupModel, min_poss: float, n: int = 15):
-    import pandas as pd
-    df = pd.DataFrame({"player_id": model.player_ids, "scorer": model.scorer,
-                       "defender": model.defender, "off_poss": model.poss_off, "def_poss": model.poss_def})
+    eff = model.total_effects()
+    eff["def_poss"], eff["off_poss"] = model.poss_def, model.poss_off
     with conn.cursor() as cur:
         cur.execute("SELECT player_id, full_name FROM players WHERE player_id = ANY(%s)",
-                    ([int(x) for x in df.player_id],))
-        df["name"] = df.player_id.map(dict(cur.fetchall()))
-    d = df[df.def_poss >= min_poss].sort_values("defender")
-    s = df[df.off_poss >= min_poss].sort_values("scorer", ascending=False)
-    print(f"\nBest one-on-one defenders (min {min_poss:,.0f} matchup poss; negative = fewer pts allowed)")
-    print(d.head(n)[["name", "defender", "def_poss"]].to_string(index=False, float_format=lambda x: f"{x:+.2f}"))
+                    ([int(x) for x in eff.player_id],))
+        eff["name"] = eff.player_id.map(dict(cur.fetchall()))
+    fmt = {"defender_pct": "{:+.1f}%".format, "scorer_pct": "{:+.1f}%".format,
+           "def_poss": "{:,.0f}".format, "off_poss": "{:,.0f}".format}
+    d = eff[eff.def_poss >= min_poss].sort_values("defender_pct")
+    s = eff[eff.off_poss >= min_poss].sort_values("scorer_pct", ascending=False)
+    print(f"\nBest one-on-one defenders (min {min_poss:,.0f} matchup poss).")
+    print("defender_pct = change in his man's scoring vs. an average defender, size terms included")
+    print(d.head(n)[["name", "defender_pct", "def_poss"]].to_string(index=False, formatters=fmt))
     print(f"\nToughest scorers to guard (min {min_poss:,.0f} matchup poss)")
-    print(s.head(n)[["name", "scorer", "off_poss"]].to_string(index=False, float_format=lambda x: f"{x:+.2f}"))
+    print(s.head(n)[["name", "scorer_pct", "off_poss"]].to_string(index=False, formatters=fmt))
 
 
 def main():
@@ -56,23 +63,29 @@ def main():
         weights = season_weights(args.seasons, args.decay)
         rows = mm.load_matchups(conn, args.seasons)
         feats, meta = mm.player_features(conn, rows)
-        design = mm.build(rows, feats, meta, weights)
-        print(f"Matchup rows: {len(rows):,}  players: {design.n_players:,}")
+        design = mm.build(mm.aggregate(rows), feats, meta, weights)
+        print(f"Matchup rows: {len(rows):,} ({len(design.rate):,} after aggregating)  "
+              f"players: {design.n_players:,}  model: {args.kind}")
         print("Choosing ridge penalty with game-level cross-validation...")
-        alpha, cv = mm.cross_validate(design, n_splits=args.folds)
-        cv_rmse = float(cv.loc[cv.alpha == alpha, "cv_rmse"].iloc[0])
-        model = mm.fit(design, feats, meta, alpha)
-        print(f"alpha={alpha:,.0f}  intercept={model.intercept:.2f} pts/100 matchup poss")
-        print("size/style weights:", {n: round(float(w), 3) for n, w in zip(mm.FEATURES, model.feat_coef)})
+        alpha, cv = mm.cross_validate(rows, feats, meta, weights, args.kind, n_splits=args.folds)
+        cv_score = float(cv.loc[cv.alpha == alpha].iloc[0, 1])
+        model = mm.fit(design, feats, meta, alpha, args.kind)
+        if args.kind == "poisson":
+            print(f"alpha={alpha:.3g}  league rate={100 * np.exp(model.intercept):.2f} pts/100 matchup poss")
+            print("size/style effects:", {n: f"{100 * (np.exp(w) - 1):+.2f}% per unit"
+                                          for n, w in zip(mm.FEATURES, model.feat_coef)})
+        else:
+            print(f"alpha={alpha:,.0f}  intercept={model.intercept:.2f} pts/100 matchup poss")
+            print("size/style weights:", {n: round(float(w), 3) for n, w in zip(mm.FEATURES, model.feat_coef)})
 
         report = []
         val_alpha = alpha
         if not args.skip_validate:
             print()
             v = validate.run(conn, args.train, args.test, args.decay, n_splits=args.folds)
-            val_alpha = v.alpha
+            val_alpha = v.alphas[args.kind]
             print()
-            print(v.table.to_string(index=False, float_format=lambda x: f"{x:.3f}"))
+            print(v.table.to_string(index=False, float_format=lambda x: f"{x:.4f}"))
             report.append(v.to_markdown())
 
         with conn.cursor() as cur:
@@ -80,18 +93,23 @@ def main():
             row = cur.fetchone()
         if row is None:
             raise SystemExit("No RAPM run found. Run scripts/run_rapm.py first.")
+        if args.skip_validate:  # need a penalty fit on the training seasons only
+            tr_rows = mm.load_matchups(conn, args.train)
+            tr_feats, tr_meta = mm.player_features(conn, tr_rows)
+            val_alpha, _ = mm.cross_validate(tr_rows, tr_feats, tr_meta, season_weights(args.train, args.decay),
+                                             args.kind, n_splits=args.folds)
         print()
         cal = calibrate.run(conn, args.train, args.test, args.decay,
-                            rapm_alpha=float(row[0]), matchup_alpha=val_alpha)
+                            rapm_alpha=float(row[0]), matchup_alpha=val_alpha, kind=args.kind)
         c = cal.cal
         print(f"  base={c.base:.2f}  a={c.a:.3f}  b={c.b:.3f}  c={c.c:.3f}  home={cal.home:+.2f}")
         print(cal.table.to_string(index=False, float_format=lambda x: f"{x:.3f}"))
         report.append(cal.to_markdown())
 
-        run_id = store.save(conn, model, args.seasons, weights, cv_rmse, len(rows),
-                            calibration=c, home=cal.home)
+        run_id = store.save(conn, model, args.seasons, weights, cv_score, len(rows),
+                            calibration=c, home=cal.home, notes=args.kind)
         conn.commit()
-        print(f"\nSaved matchup run {run_id}")
+        print(f"\nSaved matchup run {run_id} ({args.kind})")
         print_leaders(conn, model, args.min_poss)
 
         REPORT.parent.mkdir(parents=True, exist_ok=True)

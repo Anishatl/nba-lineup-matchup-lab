@@ -159,3 +159,7 @@ CREATE TABLE IF NOT EXISTS model_params (
     value   NUMERIC,
     PRIMARY KEY (run_id, name)
 );
+
+-- Full effect of each player incl. size/style terms, as % vs. average (added with the Poisson model)
+ALTER TABLE matchup_ratings ADD COLUMN IF NOT EXISTS defender_pct NUMERIC;  -- negative = better defender
+ALTER TABLE matchup_ratings ADD COLUMN IF NOT EXISTS scorer_pct   NUMERIC;  -- positive = tougher scorer

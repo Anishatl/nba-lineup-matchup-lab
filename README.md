@@ -103,18 +103,32 @@ psql -U postgres -d nba_lab -v team=ATL -v min_poss=1000 -f db/queries/player_ra
 ## Fit the matchup model
 
 ```bash
-python scripts/run_matchups.py        # fit + validate + calibrate + save (run run_rapm.py first)
+python scripts/run_matchups.py                # Poisson (default): fit + validate + calibrate + save
+python scripts/run_matchups.py --kind linear  # additive version, for comparison
 ```
+Run `run_rapm.py` first.
 
-- **Matchup model:** weighted ridge on every game × (scorer, defender) row:
-  pts per 100 matchup possessions ≈ intercept + scorer skill + defender skill + size/style terms
-  (height diff, weight diff, squared size mismatch, scorer 3PA share × defender height).
-  Works for pairs that have never faced each other.
-- **Validation:** trains on 2023-24 + 2024-25, predicts 2025-26 matchups, compares league average →
-  scorer only → + defender → + size/style.
+- **Matchup model (ridge Poisson regression).** For every game × (scorer, defender) row:
+  `log(pts per matchup possession) = intercept + scorer skill + defender skill + size/style terms`,
+  so `pts = base × scorer multiplier × defender multiplier × size multiplier`.
+  A defender takes away a *share* of whoever he guards (e.g. ×0.88 = −12%), so he matters more against
+  high-volume scorers. That is what makes who-guards-whom matter: in an additive model every assignment
+  of the same 5 defenders gives the same total, so there is nothing to optimize.
+- **Size/style terms** (true pair interactions, centered on the average matchup): squared height mismatch,
+  and scorer 3PA share × defender height. Additive height/weight differences are left out because the
+  player skills absorb them and the skills become hard to read.
+- **Rankings** use each player's *total* effect (size terms included) against a typical mix of opponents,
+  as a percentage.
+- Rows are aggregated to (scorer, defender, season) for fitting (identical result, much faster);
+  cross-validation still splits raw rows by game. Poisson is scored by deviance.
+- **Validation:** trains on 2023-24 + 2024-25, predicts 2025-26 matchups; compares league average,
+  the linear model, and Poisson with scorer only / + defender / + size-style.
 - **Calibration:** on the held-out season, fits
   `pts/100 = base + a·ΣO-RAPM + b·(optimal matchup defense) + c·ΣD-RAPM + h·home`
   so both models are on one scale, and compares against RAPM alone.
+- Points come in 1s, 2s and 3s, so they vary more than a Poisson model assumes (overdispersion).
+  That doesn't bias the estimates, only their standard errors (not reported; a game-level bootstrap
+  would be the way to add them).
 - Writes `reports/matchup_validation.md`.
 
 ## Plan a matchup

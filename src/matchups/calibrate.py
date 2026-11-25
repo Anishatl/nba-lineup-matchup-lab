@@ -91,7 +91,8 @@ def _game_fit(rows: pd.DataFrame, pred: np.ndarray) -> tuple[float, float]:
     return float(np.sqrt(np.mean((a - p) ** 2))), float(np.corrcoef(a, p)[0, 1])
 
 
-def run(conn, train_seasons, test_season, decay, rapm_alpha, matchup_alpha, log=print) -> CalibrationResult:
+def run(conn, train_seasons, test_season, decay, rapm_alpha, matchup_alpha,
+        kind: str = "poisson", log=print) -> CalibrationResult:
     log(f"Calibration: train {train_seasons} -> test {test_season}")
     weights = build_matrix.season_weights(train_seasons, decay)
 
@@ -102,7 +103,8 @@ def run(conn, train_seasons, test_season, decay, rapm_alpha, matchup_alpha, log=
 
     m_rows = mm.load_matchups(conn, train_seasons)
     feats, meta = mm.player_features(conn, m_rows)
-    matchup = mm.fit(mm.build(m_rows, feats, meta, weights), feats, meta, matchup_alpha)
+    matchup = mm.fit(mm.build(mm.aggregate(m_rows), feats, meta, weights), feats, meta,
+                     matchup_alpha, kind)
 
     rows = _rows(build_matrix.load_stints(conn, [test_season]))
     off = np.array(rows["off"].tolist(), dtype=np.int64)

@@ -24,14 +24,16 @@ def save(conn, model: mm.MatchupModel, seasons, weights, cv_rmse, n_rows,
         run_id = cur.fetchone()[0]
 
     f = model.feats.reindex(model.player_ids)
+    eff = model.total_effects()
     rows = [(run_id, int(p), float(s), float(d), float(po), float(pd_),
-             float(h), float(w), float(t))
-            for p, s, d, po, pd_, h, w, t in zip(
+             float(h), float(w), float(t), float(dp), float(sp_))
+            for p, s, d, po, pd_, h, w, t, dp, sp_ in zip(
                 model.player_ids, model.scorer, model.defender, model.poss_off, model.poss_def,
-                f["height_inches"], f["weight_lbs"], f["three_rate"])]
+                f["height_inches"], f["weight_lbs"], f["three_rate"],
+                eff["defender_pct"], eff["scorer_pct"])]
     db.upsert(conn, "matchup_ratings",
               ["run_id", "player_id", "scorer_skill", "defender_skill", "off_poss", "def_poss",
-               "height_inches", "weight_lbs", "three_rate"],
+               "height_inches", "weight_lbs", "three_rate", "defender_pct", "scorer_pct"],
               rows, conflict=["run_id", "player_id"])
 
     params = model.params()
@@ -70,10 +72,11 @@ def load_engine(conn) -> Engine:
 
     if "cal_a" not in p:
         raise RuntimeError("Latest matchup run has no calibration. Re-run scripts/run_matchups.py.")
-    meta = {k: p[k] for k in ("height_mean", "weight_mean", "three_rate_mean")}
+    meta = {k: v for k, v in p.items()
+            if k in ("height_mean", "weight_mean", "three_rate_mean") or k.startswith("center_")}
     feats = m.set_index("player_id")[["height_inches", "weight_lbs", "three_rate"]]
     model = mm.MatchupModel(
-        alpha=p["alpha"], intercept=p["intercept"], player_ids=m["player_id"].to_numpy(np.int64),
+        kind="poisson" if p.get("poisson", 0.0) == 1.0 else "linear", alpha=p["alpha"], intercept=p["intercept"], player_ids=m["player_id"].to_numpy(np.int64),
         scorer=m["scorer"].to_numpy(), defender=m["defender"].to_numpy(),
         feat_coef=np.array([p[f"w_{n}"] for n in mm.FEATURES]), feats=feats, meta=meta,
         poss_off=m["off_poss"].to_numpy(), poss_def=m["def_poss"].to_numpy())
