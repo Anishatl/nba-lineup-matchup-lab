@@ -35,7 +35,7 @@ from dataclasses import dataclass, field
 import numpy as np
 import pandas as pd
 import scipy.sparse as sp
-from sklearn.linear_model import PoissonRegressor, Ridge
+from sklearn.linear_model import Ridge
 from sklearn.model_selection import GroupKFold
 
 FEATURES = ["mismatch_sq_10", "three_x_def_height"]
@@ -43,7 +43,7 @@ FEATURE_SCALE = 10.0       # lightly penalize the pair features (penalty / 100)
 THREE_PRIOR_FGA = 50       # shrink each scorer's 3PA share toward league with 50 FGA
 ALPHAS = {
     "linear": np.logspace(1.5, 4.5, 9),     # ~32 ... ~31,600
-    "poisson": np.logspace(-9, -3, 9),      # sklearn scales the Poisson loss by 1/sum(weights)
+    "poisson": np.logspace(-6.5, -2.5, 9),  # sklearn-style alpha (loss scaled by 1/sum(weights))
 }
 
 
@@ -242,10 +242,72 @@ class MatchupModel:
         return p
 
 
+class PoissonRidgeNewton:
+    """L2-penalized Poisson regression fit by Newton's method (IRLS).
+
+    Minimizes the same objective as sklearn's PoissonRegressor:
+        (1 / (2 * sum(w))) * sum(w * deviance) + (alpha / 2) * ||coef||^2
+    i.e. sum(w * (mu - y * eta)) + (alpha * sum(w) / 2) * ||coef||^2,
+    with an unpenalized intercept.
+
+    Each Newton step solves a (p+1) x (p+1) linear system (p ~ 1,700 here),
+    built from the sparse design, so it converges in a handful of steps where
+    the general-purpose L-BFGS solver crawls on this badly conditioned problem.
+    """
+
+    def __init__(self, alpha: float, max_iter: int = 100, tol: float = 1e-9):
+        self.alpha, self.max_iter, self.tol = alpha, max_iter, tol
+
+    @staticmethod
+    def _objective(eta, y, w, coef, lam):
+        return float(np.sum(w * (np.exp(eta) - y * eta)) + 0.5 * lam * coef @ coef)
+
+    def fit(self, X, y, sample_weight):
+        X = sp.csr_matrix(X)
+        w = np.asarray(sample_weight, float)
+        y = np.asarray(y, float)
+        n, p = X.shape
+        lam = self.alpha * w.sum()
+        coef = np.zeros(p)
+        b0 = float(np.log(max(np.sum(w * y) / w.sum(), 1e-12)))
+        eta = np.full(n, b0)
+        obj = self._objective(eta, y, w, coef, lam)
+        self.n_iter_ = 0
+        for it in range(1, self.max_iter + 1):
+            mu = np.exp(eta)
+            r = w * (mu - y)                          # gradient wrt eta
+            wm = w * mu                               # Hessian weights
+            g = np.concatenate([[r.sum()], X.T @ r + lam * coef])
+            XtW = X.T.multiply(wm).tocsr()            # p x n
+            H = np.empty((p + 1, p + 1))
+            H[0, 0] = wm.sum()
+            H[0, 1:] = H[1:, 0] = np.asarray(XtW.sum(axis=1)).ravel()
+            H[1:, 1:] = (XtW @ X).toarray()
+            H[1:, 1:][np.diag_indices(p)] += lam
+            step = np.linalg.solve(H, g)
+            t = 1.0                                   # backtracking line search
+            while True:
+                new_b0, new_coef = b0 - t * step[0], coef - t * step[1:]
+                new_eta = new_b0 + X @ new_coef
+                new_obj = self._objective(new_eta, y, w, new_coef, lam)
+                if np.isfinite(new_obj) and new_obj <= obj + 1e-12 * abs(obj):
+                    break
+                t *= 0.5
+                if t < 1e-8:
+                    break
+            b0, coef, eta = new_b0, new_coef, new_eta
+            done = abs(obj - new_obj) <= self.tol * max(1.0, abs(obj)) or np.max(np.abs(t * step)) < 1e-10
+            obj = new_obj
+            self.n_iter_ = it
+            if done:
+                break
+        self.intercept_, self.coef_ = b0, coef
+        return self
+
+
 def _estimator(kind: str, alpha: float):
     if kind == "poisson":
-        return PoissonRegressor(alpha=alpha, fit_intercept=True, solver="lbfgs",
-                                max_iter=1000, tol=1e-6)
+        return PoissonRidgeNewton(alpha=alpha)
     return Ridge(alpha=alpha, fit_intercept=True, solver="sparse_cg", tol=1e-6, max_iter=5000)
 
 
