@@ -19,6 +19,7 @@ export const PAGES = [
   ['sandbox.html', 'Sandbox'],
   ['players.html', 'Players'],
   ['teams.html', 'Teams'],
+  ['guide.html', 'How to use'],
   ['method.html', 'How it works'],
 ];
 
@@ -144,10 +145,9 @@ export function mostUsedLineup(teams, abbr) {
   return (t?.roster || []).slice(0, 5).map((r) => r.id);
 }
 
-export function defaultRoster(teams, abbr, n = 12, minMinutes = 50) {
-  const r = teams[abbr]?.roster || [];
-  const picked = r.filter((x) => x.min >= minMinutes).slice(0, n).map((x) => x.id);
-  return picked.length >= 5 ? picked : r.slice(0, Math.max(5, n)).map((x) => x.id);
+// Default: the 12 players with the most minutes this season.
+export function defaultRoster(teams, abbr, n = 12) {
+  return (teams[abbr]?.roster || []).filter((x) => x.min > 0).slice(0, n).map((x) => x.id);
 }
 
 // ---------- formatting ----------

@@ -65,13 +65,13 @@
     <div class="eq">log(pts per matchup possession) = intercept + scorer skill + defender skill + size/style terms
 pts = base × scorer multiplier × defender multiplier × size multiplier</div>
     <p><b>Why multiplicative?</b> In an additive model a defender takes away the same number of points from anyone he guards, so every assignment of the same five defenders adds up to the same total and there's nothing to optimize. In a Poisson model a defender removes a <i>share</i> of his man's scoring, which is worth more against a high-volume scorer. "Put your best defender on their best scorer" comes out of the math on its own:</p>
-    <table>
+    <div class="tablewrap"><table>
       <thead><tr><th></th><th class="n">On star (34 pts/100)</th><th class="n">On role player (18)</th><th class="n">Assignments that differ</th></tr></thead>
       <tbody>
         <tr><td>Additive: defender −3 pts</td><td class="n">31.0</td><td class="n">15.0</td><td class="n">0 (every total is equal)</td></tr>
         <tr><td>Poisson: defender ×0.88</td><td class="n">29.9</td><td class="n">15.8</td><td class="n hi">best defender → star</td></tr>
       </tbody>
-    </table>
+    </table></div>
     <ul>
       <li><b>Size/style terms</b> are true pair interactions, centered on the average matchup: squared height mismatch (big gaps in either direction), and the scorer's 3-point rate × the defender's height. Plain height and weight differences were tested and dropped: they split into a defender part plus a scorer part, so the player skills absorb them.</li>
       <li><b>Team defensive context.</b> Each row also gets a term for the defending team-season, so scheme and help defense aren't credited to whoever was nominally guarding. An offensive-team term was tested on synthetic data and dropped: a team's offense is largely its star, so it took credit from individual scorers.</li>

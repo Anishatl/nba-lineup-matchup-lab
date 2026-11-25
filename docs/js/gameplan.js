@@ -99,7 +99,7 @@ function renderLineups() {
   $('lineups').innerHTML = S.ranked.map((r, i) => `
     <tr class="pick ${i === S.selected ? 'sel' : ''}" data-i="${i}">
       <td class="rank">${i + 1}</td>
-      <td class="names">${r.lineup.map((id) => esc(fmt.last(name(id)))).join('<span class="sep">·</span>')}</td>
+      <td class="names">${r.lineup.map((id) => `<span class="nowrap">${esc(fmt.last(name(id)))}</span>`).join('<span class="sep">·</span>')}</td>
       <td class="n"><span class="box ${i === 0 ? 'best' : ''}">${fmt.signed(r.net)}</span></td>
       <td class="n">${fmt.num(r.scored)}</td>
       <td class="n">${fmt.num(r.allowed)}</td>
@@ -121,7 +121,7 @@ function renderAssignments() {
     const head = k === 0 ? 'Option 1 · best'
       : `Option 2 <span class="num">+${gap.toFixed(1)} matchup pts/100 · about ${fmt.signed(b * gap, 2)} allowed per 100 after calibration</span>`;
     const cards = [...o.pairs].sort((x, y) => y.pts - x.pts).map((p) => `
-      <div class="card"><div class="who">${esc(fmt.last(name(p.def)))}</div>
+      <div class="card" title="${esc(name(p.def))} guards ${esc(name(p.scorer))}"><div class="who">${esc(fmt.last(name(p.def)))}</div>
         <div class="on">on <b>${esc(fmt.last(name(p.scorer)))}</b></div>
         <div class="pts">${p.pts.toFixed(1)} pts/100</div></div>`).join('');
     return `<div class="opt-head">${head}</div><div class="cards">${cards}</div>`;

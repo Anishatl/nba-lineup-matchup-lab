@@ -54,7 +54,7 @@ function render(abbr) {
       : z < -Z ? '<span class="verdict-tag cold">Running cold</span>'
         : '<span class="verdict-tag noise">Within noise</span>';
     const q = new URLSearchParams({ team: abbr, mine: l.ids.join(',') });
-    const names = l.ids.map((id) => esc(fmt.last(D.byId.get(id)?.name || String(id)))).join('<span class="sep">·</span>');
+    const names = l.ids.map((id) => `<span class="nowrap">${esc(fmt.last(D.byId.get(id)?.name || String(id)))}</span>`).join('<span class="sep">·</span>');
     const mins = l.min != null ? `${Math.round(l.min)} min` : `${fmt.int(l.poss)} poss`;
     return `<tr>
       <td class="names"><a href="sandbox.html?${q}" title="Open in the sandbox">${names}</a>

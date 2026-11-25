@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>How to use · NBA Lineup &amp; Matchup Lab</title>
+  <meta name="description" content="Step-by-step guide to the NBA Lineup & Matchup Lab: game plans, the matchup sandbox, player ratings, and team lineup luck checks.">
+  <link rel="stylesheet" href="css/style.css">
+  <style>
+    main.doc > * { max-width: 900px; }
+    .doc p, .doc li { color: #d6d6d6; }
+    .doc h2.sec { margin-top: 36px; }
+    .quick { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 0; margin: 8px 0 6px; max-width: 900px; }
+    .quick div { background: var(--slate); padding: 14px 16px; border-right: 1px solid var(--bg); }
+    .quick div:first-child { background: var(--team); }
+    .quick b { display: block; font: 700 34px var(--cond); line-height: 1; margin-bottom: 6px; }
+    .quick span { font: 600 17px var(--cond); letter-spacing: .04em; text-transform: uppercase; }
+    .quick p { margin: 6px 0 0; font-size: 14px; color: #e6e6e6; }
+    ol.steps { list-style: none; counter-reset: s; padding: 0; margin: 12px 0; }
+    ol.steps li { counter-increment: s; position: relative; padding: 10px 0 10px 52px; border-bottom: 1px solid var(--line); }
+    ol.steps li::before { content: counter(s); position: absolute; left: 0; top: 9px; width: 36px; height: 30px;
+      background: var(--slate); border-bottom: 3px solid var(--team-hi); font: 700 20px var(--cond);
+      display: flex; align-items: center; justify-content: center; color: var(--text); }
+    ol.steps b { color: var(--text); }
+    .ui { font: 600 14px var(--cond); letter-spacing: .06em; text-transform: uppercase; background: var(--slate);
+      border: 1px solid var(--line-strong); padding: 1px 6px; color: var(--text); }
+    .try { display: inline-block; margin: 6px 0 4px; }
+    dl.gloss { display: grid; grid-template-columns: 200px 1fr; gap: 0; margin: 10px 0; }
+    dl.gloss dt, dl.gloss dd { margin: 0; padding: 9px 0; border-bottom: 1px solid var(--line); }
+    dl.gloss dt { font: 600 17px var(--cond); letter-spacing: .03em; color: var(--text); }
+    dl.gloss dd { color: #d6d6d6; }
+    @media (max-width: 700px) { dl.gloss { grid-template-columns: 1fr; } dl.gloss dt { border-bottom: 0; padding-bottom: 0; } }
+    details { border-bottom: 1px solid var(--line); padding: 10px 0; }
+    summary { cursor: pointer; font: 600 18px var(--cond); letter-spacing: .03em; color: var(--text); }
+    details p { margin: 8px 0 2px; }
+  </style>
+</head>
+<body>
+  <nav id="nav"></nav>
+  <main class="doc">
+    <div class="scorebar">
+      <div class="side team">NBA</div>
+      <div class="title">How to use the lab</div>
+    </div>
+    <p class="lede">A quick tour of every page. Everything runs in your browser and updates as soon as you change something. There's nothing to submit, and the link in your address bar always keeps your current setup, so you can bookmark or share it.</p>
+
+    <div class="quick">
+      <div><b>1</b><span>Pick two teams</span><p>Your team on the left, the opponent on the right, in the bar at the top of any page.</p></div>
+      <div><b>2</b><span>Read the game plan</span><p>The best five-man lineups against their five, and who should guard whom.</p></div>
+      <div><b>3</b><span>Test your own idea</span><p>Open the sandbox, set your own matchups, and see what they cost.</p></div>
+    </div>
+
+    <h2 class="sec" id="game-plan">Game plan</h2>
+    <p>Finds the best five from your roster against a specific opposing lineup.</p>
+    <ol class="steps">
+      <li><b>Choose the teams.</b> Click the team abbreviation on the left of the bar for your team, and the one on the right for the opponent.</li>
+      <li><b>Set their five.</b> It starts with the opponent's most-used lineup this season. Click any slot to swap in another player from their roster (the list is A–Z). <span class="ui">Most-used lineup</span> puts it back.</li>
+      <li><b>Pick your players.</b> Your 12 players with the most minutes are checked. Check or uncheck anyone (up to 15). To test a trade or a signing, type any player in the league into <span class="ui">Add any player</span>.</li>
+      <li><b>Read the best lineups.</b> Every five-man combination is tested and the top 10 are listed. <b>Net</b> is how many points per 100 possessions that lineup should outscore their five by. The best one is boxed.</li>
+      <li><b>Click a lineup</b> to see <b>who guards whom</b>: the best assignment and the runner-up, with how many points separate them. Each card shows the scorer's expected points per 100 possessions in that matchup.</li>
+      <li><b>Adjust the sliders</b> (see <a href="#sliders">below</a>), or press <span class="ui">Try your own matchups in the sandbox</span> to take the selected lineup to the sandbox.</li>
+    </ol>
+    <a class="try" href="index.html?team=ATL&opp=NYK"><button class="primary">Try it: Hawks vs. Knicks</button></a>
+
+    <h2 class="sec" id="sandbox">Sandbox</h2>
+    <p>For checking your own idea, like "what if our best defender takes their star?"</p>
+    <ol class="steps">
+      <li><b>Pick your five and their five</b> on the left. Each list only shows that team's roster.</li>
+      <li><b>Set the matchups.</b> For each of your players, choose who he guards from the dropdown. If you pick someone a teammate is already guarding, the two swap automatically.</li>
+      <li><b>Read the score line:</b> <b>Net</b>, <b>Scored</b> and <b>Allowed</b> per 100 possessions for your setup. The white score box in the top bar shows the same net rating.</li>
+      <li><b>Check the verdict.</b> If your setup isn't the best one for these five players, it tells you how many points per 100 you're giving up. Numbers in red mark matchups that differ from the best assignment.</li>
+      <li><b>Look at the court.</b> Their players are outlined circles at offensive spots; yours are solid. Dashed lines show who guards whom, and an orange line means that matchup differs from the best assignment.</li>
+      <li>Press <span class="ui">Use best assignment</span> to reset to the optimal matchups.</li>
+    </ol>
+    <a class="try" href="sandbox.html?team=ATL&opp=NYK"><button class="primary">Try it: open the sandbox</button></a>
+
+    <h2 class="sec" id="players">Players</h2>
+    <p>Ratings for every player in the league.</p>
+    <ol class="steps">
+      <li><b>Search</b> by name, or pick a team in the bar at the top (<span class="ui">NBA</span> shows everyone).</li>
+      <li><b>Raise or lower <span class="ui">Min possessions</span></b> to hide players with too little data. Small samples get pulled toward average, so 3,000+ is a good default.</li>
+      <li><b>Click any column header</b> to sort, and click again to flip the order.</li>
+      <li><b>Look for the flags.</b> <span class="tag switched_off">Switched off</span> means great one-on-one numbers but weak overall defense, often a sign that offenses screen him and switch away. <span class="tag help_rim">Help / rim</span> means he's a strong defender whose value doesn't show up one-on-one, usually a rim protector.</li>
+    </ol>
+    <a class="try" href="players.html"><button class="primary">Try it: player ratings</button></a>
+
+    <h2 class="sec" id="teams">Teams</h2>
+    <p>A one-page scouting summary of a single team.</p>
+    <ol class="steps">
+      <li><b>Pick a team</b> in the bar. The tiles show its record, net rating, and how much its defensive scheme suppresses one-on-one scoring.</li>
+      <li><b>Read the lineup luck check.</b> For each of its most-used lineups: the <b>actual</b> net rating this season, what the model <b>expects</b> from those five players, and the <b>gap</b>.</li>
+      <li><b>Check the verdict.</b> <span class="verdict-tag" style="background:var(--warn);color:#111;font:600 13px var(--cond);padding:2px 8px">Running hot</span> means the lineup is doing better than its players suggest, so expect it to cool off. <span class="verdict-tag" style="background:#4c8dff;color:#fff;font:600 13px var(--cond);padding:2px 8px">Running cold</span> means it's underperforming and may deserve more minutes. Most lineups are <b>within noise</b>: they haven't played enough possessions to tell yet.</li>
+      <li><b>Click a lineup</b> to open it in the sandbox. The roster table below lists every player's ratings.</li>
+    </ol>
+    <a class="try" href="teams.html?team=ATL"><button class="primary">Try it: Hawks scouting page</button></a>
+
+    <h2 class="sec" id="sliders">The two sliders</h2>
+    <dl class="gloss">
+      <dt>Defensive emphasis</dt><dd>How much points allowed count relative to points scored. At 1.0× they count equally (plain net rating). Raise it to protect a lead or to find your best defensive group; lower it when you need offense.</dd>
+      <dt>Size effects</dt><dd>How much height mismatches matter in matchups. 100% is what the data suggests. Set it to 0% to see recommendations based on skill alone, which is useful because mismatches in real games often happen on switches.</dd>
+    </dl>
+
+    <h2 class="sec" id="glossary">Glossary</h2>
+    <dl class="gloss">
+      <dt>Per 100 possessions</dt><dd>Every rating is scaled to 100 possessions, about one game, so fast and slow teams compare fairly.</dd>
+      <dt>Net</dt><dd>Points scored minus points allowed per 100 possessions. +3 means that group should win its minutes by about 3 points per game's worth of possessions.</dd>
+      <dt>RAPM (Off / Def)</dt><dd>How much the team's scoring margin improves with a player on the floor, after accounting for his teammates and opponents. 0 is the average player on the floor; higher is better on both ends.</dd>
+      <dt>Pts saved</dt><dd>A player's defensive value in points per 100 possessions: mostly his defensive RAPM, plus his one-on-one matchup defense.</dd>
+      <dt>1-on-1 D</dt><dd>How much the player he guards scores compared with against an average defender. Negative is better (−10% means his man scores 10% less).</dd>
+      <dt>Scoring</dt><dd>How much more a player scores one-on-one than an average scorer would against the same defenders.</dd>
+      <dt>Pts/100 matchup poss</dt><dd>On assignment cards: how many points the scorer is expected to produce per 100 possessions while that defender guards him.</dd>
+      <dt>Within noise</dt><dd>The gap between a lineup's results and the model's expectation is small enough to be luck, given how few possessions it has played.</dd>
+    </dl>
+
+    <h2 class="sec" id="faq">Common questions</h2>
+    <details><summary>Why doesn't the best defender always guard their best scorer?</summary>
+      <p>Usually because of size. If their star is much taller or shorter than your best defender, the mismatch can cost more than his defense saves. Turn <b>Size effects</b> down to 0% to see the skill-only answer.</p></details>
+    <details><summary>Why are the differences between assignments so small?</summary>
+      <p>That's a real finding: who's on the floor matters much more than exactly who guards whom. Swapping assignments usually moves net rating by tenths of a point per 100, while changing the lineup moves it by several points.</p></details>
+    <details><summary>How current is the data?</summary>
+      <p>The date at the bottom of every page shows the last update. It covers every regular-season game from 2023-24 through the latest update, with recent seasons weighted more heavily.</p></details>
+    <details><summary>Why is a player I know is good rated close to 0?</summary>
+      <p>Players with few possessions are pulled toward average until the data clearly shows otherwise, and rookies or injured players fall in that group. RAPM also measures how the scoreboard moves with a player on the floor, which can differ from box-score stats.</p></details>
+    <details><summary>Can I share what I'm looking at?</summary>
+      <p>Yes. The address bar always holds your current teams, players, matchups and slider settings, so copying the link shares the exact view.</p></details>
+
+    <p style="margin-top:28px">Want the math behind all of this? See <a href="method.html">How it works</a>.</p>
+  </main>
+  <footer id="foot"></footer>
+  <script type="module">
+    import { loadData, renderChrome, applyTeamColors, showError } from './js/ui.js';
+    applyTeamColors('ATL', 'NYK');
+    loadData().then((D) => renderChrome('guide.html', D.meta)).catch(() => renderChrome('guide.html', null));
+  </script>
+</body>
+</html>
