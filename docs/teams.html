@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Teams · NBA Lineup &amp; Matchup Lab</title>
+  <meta name="description" content="Team scouting page: roster ratings and a lineup luck check comparing each lineup's real results with what the model expects.">
+  <link rel="stylesheet" href="css/style.css">
+  <style>
+    .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 0; margin: 0 0 18px; }
+    .tiles div { background: var(--slate); padding: 10px 14px; border-right: 1px solid var(--bg); }
+    .tiles div:first-child { background: var(--text); color: var(--bg); }
+    .tiles b { display: block; font: 500 26px var(--mono); line-height: 1.15; }
+    .tiles span { font: 600 13px var(--cond); letter-spacing: .08em; text-transform: uppercase; }
+    .tiles small { display: block; font: 12px var(--mono); color: var(--muted); }
+    .tiles div:first-child small { color: #555; }
+    .verdict-tag { font: 600 13px var(--cond); letter-spacing: .06em; text-transform: uppercase; padding: 2px 8px; white-space: nowrap; }
+    .verdict-tag.hot { background: var(--warn); color: #111; }
+    .verdict-tag.cold { background: #4c8dff; color: #fff; }
+    .verdict-tag.noise { color: var(--muted); border: 1px solid var(--line-strong); }
+    td.small { font-size: 12px; }
+    .bar { position: relative; height: 18px; min-width: 120px; }
+    #lineups .names { font-size: 15px; }
+    #lineups .names a { text-decoration: none; }
+    #lineups .names a:hover { text-decoration: underline; }
+    .bar .zero { position: absolute; left: 50%; top: 0; bottom: 0; width: 1px; background: var(--line-strong); }
+    .bar .band { position: absolute; top: 6px; height: 6px; background: #333; }
+    .bar .exp { position: absolute; top: 2px; width: 3px; height: 14px; background: var(--muted); }
+    .bar .act { position: absolute; top: 3px; width: 12px; height: 12px; border-radius: 50%; background: var(--team-hi); transform: translateX(-5px); }
+    .legend { display: flex; gap: 18px; flex-wrap: wrap; font: 12px var(--mono); color: var(--muted); margin: 8px 0 0; align-items: center; }
+    .legend i { display: inline-block; vertical-align: middle; margin-right: 6px; }
+  </style>
+</head>
+<body>
+  <nav id="nav"></nav>
+  <main>
+    <div class="scorebar">
+      <div class="side team"><select id="team" aria-label="Team"></select></div>
+      <div class="title"><span id="teamname">Team</span><small id="season"></small></div>
+    </div>
+    <p class="lede">Who drives this team, and which of its lineups are winning or losing more than the players on the floor would predict.</p>
+
+    <div class="tiles" id="tiles"></div>
+
+    <section class="panel">
+      <h2 class="sec">Lineup luck check <span class="aside">most-used lineups this season · pts per 100</span></h2>
+      <div class="tablewrap"><table>
+        <thead><tr><th>Lineup <span class="muted" style="text-transform:none;letter-spacing:0">(click to open in sandbox)</span></th><th class="n">Actual</th><th class="n">Expected</th><th class="n">Gap</th><th class="n">Noise</th><th>Actual vs. expected</th><th>Read</th></tr></thead>
+        <tbody id="lineups"></tbody>
+      </table></div>
+      <div class="legend">
+        <span><i style="width:12px;height:12px;border-radius:50%;background:var(--team-hi)"></i>actual net rating</span>
+        <span><i style="width:3px;height:14px;background:var(--muted)"></i>model-expected</span>
+        <span><i style="width:24px;height:6px;background:#333"></i>90% noise band for that many possessions</span>
+      </div>
+      <p class="note">Expected = the five players' offensive and defensive RAPM against an average lineup, scaled by the out-of-sample calibration weights (raw RAPM sums overshoot real results by about 2×). A lineup is flagged as running hot or cold only when the gap falls outside the 90% noise band for its sample size, so pure chance would flag about 1 lineup in 10. Most-used lineups skew slightly above expectation (coaches keep playing what's working). RAPM includes this season, so these are in-sample checks: real luck is somewhat larger than the gaps shown.</p>
+    </section>
+
+    <section class="panel">
+      <h2 class="sec">Roster <span class="aside">this season by minutes · RAPM across all seasons</span></h2>
+      <div class="tablewrap"><table>
+        <thead><tr><th>Player</th><th class="n">Min</th><th class="n">RAPM</th><th class="n">Off</th><th class="n">Def</th><th class="n">Pts saved</th><th class="n">1-on-1 D</th><th class="n">Scoring</th><th>Flag</th></tr></thead>
+        <tbody id="roster"></tbody>
+      </table></div>
+    </section>
+  </main>
+  <footer id="foot"></footer>
+  <script type="module" src="js/teams.js"></script>
+</body>
+</html>

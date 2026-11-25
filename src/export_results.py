@@ -173,19 +173,44 @@ def export_teams(cur, season, m_run):
                        CASE WHEN g.home_team_id = %(t)s THEN s.home_poss ELSE s.away_poss END AS op,
                        CASE WHEN g.home_team_id = %(t)s THEN s.away_poss ELSE s.home_poss END AS dp,
                        CASE WHEN g.home_team_id = %(t)s THEN s.home_pts ELSE s.away_pts END AS pf,
-                       CASE WHEN g.home_team_id = %(t)s THEN s.away_pts ELSE s.home_pts END AS pa
+                       CASE WHEN g.home_team_id = %(t)s THEN s.away_pts ELSE s.home_pts END AS pa,
+                       s.seconds
                 FROM stints s JOIN games g USING (game_id)
                 WHERE g.season = %(s)s AND %(t)s IN (g.home_team_id, g.away_team_id))
-            SELECT lineup, SUM(op) + SUM(dp) AS poss,
-                   100.0 * SUM(pf) / NULLIF(SUM(op), 0) - 100.0 * SUM(pa) / NULLIF(SUM(dp), 0) AS net
-            FROM sides GROUP BY lineup ORDER BY SUM(op) + SUM(dp) DESC LIMIT 8""", {"t": tid, "s": season})
-        lineups = [{"ids": list(l), "poss": int(p), "net": _r(n, 1)} for l, p, n in cur.fetchall()]
+            SELECT lineup, SUM(op), SUM(dp), SUM(pf), SUM(pa), SUM(seconds)
+            FROM sides GROUP BY lineup ORDER BY SUM(op) + SUM(dp) DESC LIMIT 15""", {"t": tid, "s": season})
+        lineups = []
+        for l, op, dp, pf, pa, sec in cur.fetchall():
+            op, dp, pf, pa = int(op or 0), int(dp or 0), int(pf or 0), int(pa or 0)
+            net = (100.0 * pf / op if op else 0) - (100.0 * pa / dp if dp else 0)
+            lineups.append({"ids": list(l), "poss": op + dp, "op": op, "dp": dp, "pf": pf, "pa": pa,
+                            "min": round(float(sec or 0) / 60, 1), "net": _r(net, 1)})
+        # season record and team totals
+        cur.execute("""
+            SELECT COUNT(*) FILTER (WHERE (home_team_id = %(t)s AND home_pts > away_pts)
+                                       OR (away_team_id = %(t)s AND away_pts > home_pts)),
+                   COUNT(*) FILTER (WHERE (home_team_id = %(t)s AND home_pts < away_pts)
+                                       OR (away_team_id = %(t)s AND away_pts < home_pts)),
+                   SUM(CASE WHEN home_team_id = %(t)s THEN home_pts ELSE away_pts END),
+                   SUM(CASE WHEN home_team_id = %(t)s THEN away_pts ELSE home_pts END)
+            FROM games WHERE season = %(s)s AND %(t)s IN (home_team_id, away_team_id)""", {"t": tid, "s": season})
+        w, l_, pf_tot, pa_tot = cur.fetchone()
+        cur.execute("""
+            SELECT SUM(CASE WHEN g.home_team_id = %(t)s THEN s.home_pts ELSE s.away_pts END),
+                   SUM(CASE WHEN g.home_team_id = %(t)s THEN s.home_poss ELSE s.away_poss END),
+                   SUM(CASE WHEN g.home_team_id = %(t)s THEN s.away_pts ELSE s.home_pts END),
+                   SUM(CASE WHEN g.home_team_id = %(t)s THEN s.away_poss ELSE s.home_poss END)
+            FROM stints s JOIN games g USING (game_id)
+            WHERE g.season = %(s)s AND %(t)s IN (g.home_team_id, g.away_team_id)""", {"t": tid, "s": season})
+        tpf, top, tpa, tdp = [float(x or 0) for x in cur.fetchone()]
+        record = {"w": int(w or 0), "l": int(l_ or 0), "pf": int(pf_tot or 0), "pa": int(pa_tot or 0),
+                  "ortg": _r(100 * tpf / top, 1) if top else None, "drtg": _r(100 * tpa / tdp, 1) if tdp else None}
         cur.execute("SELECT value FROM model_params WHERE run_id = %s AND name = %s",
                     (m_run, f"ctx_d|{tid}|{season}"))
         row = cur.fetchone()
         ctx = _r(100 * (np.exp(float(row[0])) - 1), 1) if row else None
         teams[abbr] = {"id": tid, "city": city, "name": name, "roster": roster,
-                       "lineups": lineups, "def_context_pct": ctx}
+                       "lineups": lineups, "record": record, "def_context_pct": ctx}
     return teams
 
 

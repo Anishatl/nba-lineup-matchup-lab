@@ -176,7 +176,9 @@ matchups lead to fewer points allowed).
 
 Static site in `docs/`: **Game plan** (best lineups + top-2 assignments vs. any opponent five),
 **Sandbox** (pick your five and who guards whom; see the cost vs. the best assignment on a half-court
-diagram) and **Players** (RAPM, calibrated defensive impact, one-on-one effects, flags).
+diagram), **Players** (RAPM, calibrated defensive impact, one-on-one effects, flags), **Teams** (roster
+ratings and a lineup luck check: each most-used lineup's real net rating vs. its calibrated RAPM
+expectation, flagged only outside a 90% noise band) and **How it works**.
 
 All the math runs in the browser (`docs/js/model.js`) from small JSON files, so there's no server.
 
@@ -239,7 +241,7 @@ data/raw/              cached raw responses (git-ignored)
 - [x] **Step 1: Data pipeline.** 3,934 games validated against box scores. Postgres schema, play-by-play → stints, matchup tracking, starter SQL
 - [x] **Step 2: RAPM.** Ridge regression on stints, cross-validated penalty, out-of-sample check vs. raw +/-
 - [x] **Step 3: Matchup model.** Shrunk defender-vs-scorer PPP, model for unseen pairs, Hungarian assignment, calibration
-- [x] **Step 4: Dashboard.** (Game plan, Sandbox, Players, How it works; Teams next) Team picker, lineup explorer, matchup planner with defensive-emphasis slider, player cards
+- [x] **Step 4: Dashboard.** Game plan, Sandbox, Players, Teams (lineup luck check), How it works Team picker, lineup explorer, matchup planner with defensive-emphasis slider, player cards
 
 ## Data coverage & validation
 

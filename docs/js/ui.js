@@ -18,6 +18,7 @@ export const PAGES = [
   ['index.html', 'Game plan'],
   ['sandbox.html', 'Sandbox'],
   ['players.html', 'Players'],
+  ['teams.html', 'Teams'],
   ['method.html', 'How it works'],
 ];
 
