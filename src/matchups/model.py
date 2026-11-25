@@ -23,7 +23,16 @@ Additive height/weight differences are deliberately left out: they split into
 "defender part + scorer part", so they compete with the player skills and make
 the skills hard to read.
 
-Rows are aggregated to (scorer, defender, season) before fitting. With no
+Team context (fit only): each row also gets a term for the defending
+team-season, penalized like the player terms. Points against a defender depend
+a lot on his teammates (help defense, rim protection, scheme); without this term
+that team effect gets credited to individual defenders. (An offensive
+team-season term was tested and dropped: a team's offense is largely its best
+scorer, so the term took credit away from individual scorers.) Predictions and the optimizer use the
+player terms only: in a multiplicative model a team term scales every matchup
+for that team equally, so it can't change which lineup or assignment is best.
+
+Rows are aggregated to (scorer, defender, season, teams) before fitting. With no
 game-level inputs this gives exactly the same fit, much faster. Cross-validation
 still splits raw rows by game.
 
@@ -39,6 +48,7 @@ from sklearn.linear_model import Ridge
 from sklearn.model_selection import GroupKFold
 
 FEATURES = ["mismatch_sq_10", "three_x_def_height"]
+CTX_COLUMNS = ("off_ctx", "def_ctx")   # whichever are present get context terms (default: def_ctx only)
 FEATURE_SCALE = 10.0       # lightly penalize the pair features (penalty / 100)
 THREE_PRIOR_FGA = 50       # shrink each scorer's 3PA share toward league with 50 FGA
 ALPHAS = {
@@ -50,9 +60,18 @@ ALPHAS = {
 # ---------------------------------------------------------------- data ----
 
 def load_matchups(conn, seasons: list[str]) -> pd.DataFrame:
+    # Offensive team = whichever team in this game the scorer played for that season.
     sql = """
         SELECT m.game_id, g.season, m.off_player_id, m.def_player_id,
-               m.partial_poss, m.player_pts, m.fga, m.fg3a
+               m.partial_poss, m.player_pts, m.fga, m.fg3a,
+               CASE WHEN EXISTS (SELECT 1 FROM player_team_season p
+                                 WHERE p.player_id = m.off_player_id AND p.season = g.season
+                                   AND p.team_id = g.home_team_id)
+                    THEN g.home_team_id ELSE g.away_team_id END AS off_team,
+               CASE WHEN EXISTS (SELECT 1 FROM player_team_season p
+                                 WHERE p.player_id = m.off_player_id AND p.season = g.season
+                                   AND p.team_id = g.home_team_id)
+                    THEN g.away_team_id ELSE g.home_team_id END AS def_team
         FROM matchups m JOIN games g USING (game_id)
         WHERE g.season = ANY(%s) AND m.partial_poss > 0
     """
@@ -64,6 +83,7 @@ def load_matchups(conn, seasons: list[str]) -> pd.DataFrame:
         df[c] = pd.to_numeric(df[c], errors="coerce").fillna(0.0)
     df["off_player_id"] = df["off_player_id"].astype(np.int64)
     df["def_player_id"] = df["def_player_id"].astype(np.int64)
+    df["def_ctx"] = "d|" + df["def_team"].astype(str) + "|" + df["season"]
     return df
 
 
@@ -124,18 +144,20 @@ def pair_features(off_ids, def_ids, feats: pd.DataFrame, meta: dict) -> np.ndarr
 
 
 def aggregate(rows: pd.DataFrame) -> pd.DataFrame:
-    """Sum possessions and points per (scorer, defender, season)."""
-    return (rows.groupby(["off_player_id", "def_player_id", "season"], as_index=False)
-                [["partial_poss", "player_pts"]].sum())
+    """Sum possessions and points per (scorer, defender, season, teams)."""
+    keys = ["off_player_id", "def_player_id", "season"]
+    keys += [k for k in CTX_COLUMNS if k in rows.columns]
+    return rows.groupby(keys, as_index=False)[["partial_poss", "player_pts"]].sum()
 
 
 @dataclass
 class MatchupDesign:
-    X: sp.csr_matrix          # [scorer P | defender P | features]
+    X: sp.csr_matrix          # [scorer P | defender P | features | team contexts]
     rate: np.ndarray          # points per possession
     w: np.ndarray             # possessions x season recency weight
     poss: np.ndarray
     player_ids: np.ndarray
+    ctx_keys: np.ndarray = field(default_factory=lambda: np.array([], dtype=object))
 
     @property
     def n_players(self) -> int:
@@ -144,8 +166,10 @@ class MatchupDesign:
 
 def build(rows: pd.DataFrame, feats: pd.DataFrame, meta: dict,
           weights: dict[str, float] | None = None,
-          player_ids: np.ndarray | None = None) -> MatchupDesign:
-    """Build the design matrix from (already aggregated or raw) rows."""
+          player_ids: np.ndarray | None = None,
+          ctx_keys: np.ndarray | None = None) -> MatchupDesign:
+    """Build the design matrix from (already aggregated or raw) rows.
+    Team-context columns are added when the rows carry off_ctx/def_ctx."""
     off = rows["off_player_id"].to_numpy(dtype=np.int64)
     dfn = rows["def_player_id"].to_numpy(dtype=np.int64)
     if player_ids is None:
@@ -166,10 +190,29 @@ def build(rows: pd.DataFrame, feats: pd.DataFrame, meta: dict,
     v = np.concatenate([np.ones(o_ok.sum()), np.ones(d_ok.sum()), F.ravel()])
     X = sp.csr_matrix((v, (r, c)), shape=(n, 2 * P + k))
 
+    ctx_cols = [c_ for c_ in CTX_COLUMNS if c_ in rows.columns]
+    if ctx_cols:
+        if ctx_keys is None:
+            ctx_keys = np.unique(np.concatenate([rows[c_].unique() for c_ in ctx_cols]))
+        ctx_keys = np.asarray(ctx_keys, dtype=object)
+        lookup = pd.Series(np.arange(len(ctx_keys)), index=ctx_keys)
+        rr, cc = [], []
+        for c_ in ctx_cols:
+            pos = lookup.reindex(rows[c_]).to_numpy()
+            ok = ~np.isnan(pos)
+            rr.append(r_idx[ok])
+            cc.append(pos[ok].astype(int))
+        rr, cc = np.concatenate(rr), np.concatenate(cc)
+        C = sp.csr_matrix((np.ones(len(rr)), (rr, cc)), shape=(n, len(ctx_keys)))
+        X = sp.hstack([X, C], format="csr")
+    else:
+        ctx_keys = np.array([], dtype=object)
+
     poss = rows["partial_poss"].to_numpy(dtype=float)
     rate = rows["player_pts"].to_numpy(dtype=float) / poss
     sw = (rows["season"].map(weights).fillna(0.0).to_numpy(dtype=float) if weights else np.ones(n))
-    return MatchupDesign(X=X, rate=rate, w=poss * sw, poss=poss, player_ids=player_ids)
+    return MatchupDesign(X=X, rate=rate, w=poss * sw, poss=poss, player_ids=player_ids,
+                         ctx_keys=ctx_keys)
 
 
 # --------------------------------------------------------------- model ----
@@ -188,6 +231,8 @@ class MatchupModel:
     poss_off: np.ndarray = field(default=None)
     poss_def: np.ndarray = field(default=None)
     size_strength: float = 1.0            # scales the size/style terms (1 = as fitted, 0 = off)
+    ctx_keys: np.ndarray = field(default_factory=lambda: np.array([], dtype=object))
+    ctx_coef: np.ndarray = field(default_factory=lambda: np.array([]))
 
     def _skill(self, ids, arr) -> np.ndarray:
         s = pd.Series(arr, index=self.player_ids)
@@ -201,6 +246,30 @@ class MatchupModel:
                + pair_features(off_ids, def_ids, self.feats, self.meta)
                @ (self.feat_coef * self.size_strength))
         return 100.0 * np.exp(eta) if self.kind == "poisson" else eta
+
+    def predict_rows(self, rows: pd.DataFrame) -> np.ndarray:
+        """Like predict_pairs, but adds the team-context terms for rows whose
+        team-seasons the model has seen (used for scoring held-out games)."""
+        off_ids = rows["off_player_id"].to_numpy()
+        def_ids = rows["def_player_id"].to_numpy()
+        ctx_cols = [c for c in CTX_COLUMNS if c in rows.columns]
+        if not len(self.ctx_keys) or not ctx_cols:
+            return self.predict_pairs(off_ids, def_ids)
+        ctx = pd.Series(self.ctx_coef, index=self.ctx_keys)
+        extra = sum(ctx.reindex(rows[c]).fillna(0.0).to_numpy() for c in ctx_cols)
+        eta = (self.intercept + self._skill(off_ids, self.scorer) + self._skill(def_ids, self.defender)
+               + pair_features(off_ids, def_ids, self.feats, self.meta) @ (self.feat_coef * self.size_strength)
+               + extra)
+        return 100.0 * np.exp(eta) if self.kind == "poisson" else eta
+
+    def team_context(self) -> pd.DataFrame:
+        """Fitted team-season context effects as % (Poisson) or pts/100 (linear)."""
+        if not len(self.ctx_keys):
+            return pd.DataFrame(columns=["side", "team_id", "season", "effect"])
+        parts = pd.Series(self.ctx_keys).str.split("|", expand=True)
+        eff = 100 * (np.exp(self.ctx_coef) - 1) if self.kind == "poisson" else self.ctx_coef
+        return pd.DataFrame({"side": parts[0].map({"o": "offense", "d": "defense"}),
+                             "team_id": parts[1].astype(int), "season": parts[2], "effect": eff})
 
     def matrix(self, defenders, scorers) -> np.ndarray:
         """M[i, j] = predicted pts/100 if defenders[i] guards scorers[j]."""
@@ -322,23 +391,27 @@ def _target(kind: str, design: MatchupDesign) -> np.ndarray:
 
 
 def _columns(design: MatchupDesign, which: str) -> np.ndarray:
+    """which: 'scorer' | 'scorer+defender' | 'full' (players + size/style)
+    | 'full+context' (also team-season context, if the design has it)."""
     P = design.n_players
     return {"scorer": np.arange(P),
-            "scorer+defender": np.arange(2 * P)}.get(which, np.arange(2 * P + len(FEATURES)))
+            "scorer+defender": np.arange(2 * P),
+            "full": np.arange(2 * P + len(FEATURES))}.get(which, np.arange(design.X.shape[1]))
 
 
 def fit(design: MatchupDesign, feats, meta, alpha: float, kind: str = "poisson",
-        which: str = "full") -> MatchupModel:
+        which: str = "full+context") -> MatchupModel:
     cols = _columns(design, which)
     est = _estimator(kind, alpha).fit(design.X[:, cols], _target(kind, design), sample_weight=design.w)
     coef = np.zeros(design.X.shape[1])
     coef[cols] = est.coef_
-    P = design.n_players
+    P, k = design.n_players, len(FEATURES)
     poss_by_col = design.X[:, :2 * P].T @ design.poss
     return MatchupModel(
         kind=kind, alpha=alpha, intercept=float(est.intercept_), player_ids=design.player_ids,
-        scorer=coef[:P], defender=coef[P:2 * P], feat_coef=coef[2 * P:] * FEATURE_SCALE,
-        feats=feats, meta=meta, poss_off=poss_by_col[:P], poss_def=poss_by_col[P:])
+        scorer=coef[:P], defender=coef[P:2 * P], feat_coef=coef[2 * P:2 * P + k] * FEATURE_SCALE,
+        feats=feats, meta=meta, poss_off=poss_by_col[:P], poss_def=poss_by_col[P:],
+        ctx_keys=design.ctx_keys, ctx_coef=coef[2 * P + k:])
 
 
 # ---------------------------------------------------------- evaluation ----
@@ -357,7 +430,7 @@ def poisson_deviance(pts, poss, pred_per100) -> float:
 
 def score(model: MatchupModel, rows: pd.DataFrame) -> dict:
     """Score a model on raw (per-game) rows."""
-    pred = model.predict_pairs(rows["off_player_id"].to_numpy(), rows["def_player_id"].to_numpy())
+    pred = model.predict_rows(rows)
     poss = rows["partial_poss"].to_numpy(dtype=float)
     pts = rows["player_pts"].to_numpy(dtype=float)
     return {"rmse": weighted_rmse(100 * pts / poss, pred, poss),
@@ -365,21 +438,24 @@ def score(model: MatchupModel, rows: pd.DataFrame) -> dict:
 
 
 def cross_validate(rows: pd.DataFrame, feats, meta, weights, kind: str = "poisson",
-                   alphas=None, n_splits: int = 5, log=print):
+                   alphas=None, n_splits: int = 5, which: str = "full+context", log=print):
     """Pick alpha with GroupKFold by game on raw rows. Each training fold is
     aggregated before fitting; scoring is on the held-out fold's raw rows.
     Poisson is scored by deviance, linear by RMSE."""
     alphas = ALPHAS[kind] if alphas is None else alphas
     metric = "deviance" if kind == "poisson" else "rmse"
     player_ids = np.union1d(rows["off_player_id"].unique(), rows["def_player_id"].unique())
+    ctx_cols = [c for c in CTX_COLUMNS if c in rows.columns]
+    ctx_keys = np.unique(np.concatenate([rows[c].unique() for c in ctx_cols])) if ctx_cols else None
     folds = list(GroupKFold(n_splits=n_splits).split(rows, groups=rows["game_id"]))
-    train_designs = [build(aggregate(rows.iloc[tr]), feats, meta, weights, player_ids) for tr, _ in folds]
+    train_designs = [build(aggregate(rows.iloc[tr]), feats, meta, weights, player_ids, ctx_keys)
+                     for tr, _ in folds]
     out = []
     for a in alphas:
-        vals = [score(fit(d, feats, meta, a, kind), rows.iloc[te])[metric]
+        vals = [score(fit(d, feats, meta, a, kind, which), rows.iloc[te])[metric]
                 for d, (_, te) in zip(train_designs, folds)]
         out.append({"alpha": float(a), metric: float(np.mean(vals))})
-        log(f"  [{kind}] alpha={a:>11.3g}  cv_{metric}={np.mean(vals):.5f}")
+        log(f"  [{kind}, {which}] alpha={a:>11.3g}  cv_{metric}={np.mean(vals):.5f}")
     table = pd.DataFrame(out)
     best = table.loc[table[metric].idxmin()]
     if best["alpha"] in (table["alpha"].min(), table["alpha"].max()):

@@ -33,6 +33,8 @@ def parse_args():
     p.add_argument("--train", nargs="+", default=["2023-24", "2024-25"])
     p.add_argument("--test", default="2025-26")
     p.add_argument("--skip-validate", action="store_true")
+    p.add_argument("--no-context", action="store_true",
+                   help="Fit without team-season context terms")
     p.add_argument("--min-poss", type=float, default=1500,
                    help="Min matchup possessions to appear in the printed lists")
     return p.parse_args()
@@ -56,6 +58,22 @@ def print_leaders(conn, model: mm.MatchupModel, min_poss: float, n: int = 15):
     print(s.head(n)[["name", "scorer_pct", "off_poss"]].to_string(index=False, formatters=fmt))
 
 
+def print_team_context(conn, model: mm.MatchupModel, n: int = 8):
+    ctx = model.team_context()
+    if ctx.empty:
+        return
+    with conn.cursor() as cur:
+        cur.execute("SELECT team_id, abbreviation FROM teams")
+        ctx["team"] = ctx.team_id.map(dict(cur.fetchall()))
+    unit = "%" if model.kind == "poisson" else " pts/100"
+    fmt = {"effect": lambda x: f"{x:+.1f}{unit}"}
+    d = ctx[ctx.side == "defense"].sort_values("effect")
+    print("\nTeam defensive context (scheme/help effect on every matchup; negative = suppresses scoring)")
+    print(d.head(n)[["team", "season", "effect"]].to_string(index=False, formatters=fmt))
+    print("...")
+    print(d.tail(3)[["team", "season", "effect"]].to_string(index=False, header=False, formatters=fmt))
+
+
 def main():
     args = parse_args()
     db.init_schema()
@@ -67,9 +85,10 @@ def main():
         print(f"Matchup rows: {len(rows):,} ({len(design.rate):,} after aggregating)  "
               f"players: {design.n_players:,}  model: {args.kind}")
         print("Choosing ridge penalty with game-level cross-validation...")
-        alpha, cv = mm.cross_validate(rows, feats, meta, weights, args.kind, n_splits=args.folds)
+        which = "full" if args.no_context else "full+context"
+        alpha, cv = mm.cross_validate(rows, feats, meta, weights, args.kind, n_splits=args.folds, which=which)
         cv_score = float(cv.loc[cv.alpha == alpha].iloc[0, 1])
-        model = mm.fit(design, feats, meta, alpha, args.kind)
+        model = mm.fit(design, feats, meta, alpha, args.kind, which)
         if args.kind == "poisson":
             print(f"alpha={alpha:.3g}  league rate={100 * np.exp(model.intercept):.2f} pts/100 matchup poss")
             print("size/style effects:", {n: f"{100 * (np.exp(w) - 1):+.2f}% per unit"
@@ -83,7 +102,8 @@ def main():
         if not args.skip_validate:
             print()
             v = validate.run(conn, args.train, args.test, args.decay, n_splits=args.folds)
-            val_alpha = v.alphas[args.kind]
+            val_alpha = v.alphas["poisson+context" if args.kind == "poisson" and not args.no_context
+                                 else args.kind]
             print()
             print(v.table.to_string(index=False, float_format=lambda x: f"{x:.4f}"))
             report.append(v.to_markdown())
@@ -97,7 +117,7 @@ def main():
             tr_rows = mm.load_matchups(conn, args.train)
             tr_feats, tr_meta = mm.player_features(conn, tr_rows)
             val_alpha, _ = mm.cross_validate(tr_rows, tr_feats, tr_meta, season_weights(args.train, args.decay),
-                                             args.kind, n_splits=args.folds)
+                                             args.kind, n_splits=args.folds, which=which)
         print()
         cal = calibrate.run(conn, args.train, args.test, args.decay,
                             rapm_alpha=float(row[0]), matchup_alpha=val_alpha, kind=args.kind)
@@ -111,6 +131,7 @@ def main():
         conn.commit()
         print(f"\nSaved matchup run {run_id} ({args.kind})")
         print_leaders(conn, model, args.min_poss)
+        print_team_context(conn, model)
 
         REPORT.parent.mkdir(parents=True, exist_ok=True)
         REPORT.write_text("\n".join(report), encoding="utf-8")

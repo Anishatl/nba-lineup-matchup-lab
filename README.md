@@ -117,12 +117,18 @@ Run `run_rapm.py` first.
 - **Size/style terms** (true pair interactions, centered on the average matchup): squared height mismatch,
   and scorer 3PA share × defender height. Additive height/weight differences are left out because the
   player skills absorb them and the skills become hard to read.
+- **Team defensive context (fit only).** Each row also gets a term for the *defending team-season*,
+  so help defense, rim protection and scheme are credited to the team instead of to whichever player
+  was nominally guarding. Predictions and the optimizer use player terms only (a team term scales every
+  matchup for that team equally, so it can't change which lineup or assignment is best). An offensive
+  team-season term was tested on synthetic data and dropped: it took credit away from star scorers.
+  `--no-context` turns it off.
 - **Rankings** use each player's *total* effect (size terms included) against a typical mix of opponents,
   as a percentage.
 - Rows are aggregated to (scorer, defender, season) for fitting (identical result, much faster);
   cross-validation still splits raw rows by game. Poisson is scored by deviance.
 - **Validation:** trains on 2023-24 + 2024-25, predicts 2025-26 matchups; compares league average,
-  the linear model, and Poisson with scorer only / + defender / + size-style.
+  the linear model, and Poisson with scorer only / + defender / + size-style / + team context.
 - **Calibration:** on the held-out season, fits
   `pts/100 = base + a·ΣO-RAPM + b·(optimal matchup defense) + c·ΣD-RAPM + h·home`
   so both models are on one scale, and compares against RAPM alone.

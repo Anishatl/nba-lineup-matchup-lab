@@ -37,6 +37,7 @@ def save(conn, model: mm.MatchupModel, seasons, weights, cv_rmse, n_rows,
               rows, conflict=["run_id", "player_id"])
 
     params = model.params()
+    params.update({f"ctx_{k}": float(v) for k, v in zip(model.ctx_keys, model.ctx_coef)})
     if calibration is not None:
         params.update({f"cal_{k}": v for k, v in calibration.__dict__.items()})
         params["cal_home"] = home
