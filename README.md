@@ -5,7 +5,7 @@ Pick any NBA team and any opponent, and find out:
 1. **Which five players to put on the floor.** Every five-man combination from your roster is ranked against the opponent's lineup.
 2. **Who should guard whom.** For each lineup, the lab finds the defensive assignment that gives up the fewest points.
 
-**Live site:** https://anishatl.github.io/nba-lineup-matchup-lab/
+**Live site:** https://nba.anishbhatia.me/
 
 ---
 
