@@ -20,7 +20,7 @@ export const PAGES = [
   ['players.html', 'Players'],
   ['teams.html', 'Teams'],
   ['guide.html', 'How to use'],
-  ['method.html', 'How it works'],
+  ['about.html', 'About'],
 ];
 
 export async function loadData() {
@@ -57,8 +57,8 @@ export function renderChrome(active, meta) {
   if (foot && meta) {
     foot.innerHTML = `
       <span>Data: NBA.com play-by-play and matchup tracking, ${meta.seasons[0]} to ${meta.seasons.at(-1)}</span>
-      <span>Updated ${meta.updated} · RAPM run ${meta.rapm.run_id} · matchup run ${meta.matchup.run_id}</span>
-      <a href="https://github.com/Anishatl/nba-lineup-matchup-lab">Code on GitHub</a>`;
+      <span>Updated ${meta.updated}</span>
+      <span>© 2026 Anish Bhatia. All rights reserved.</span>`;
   }
   setParams({});
 }

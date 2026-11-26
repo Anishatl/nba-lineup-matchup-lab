@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>About · NBA Lineup &amp; Matchup Lab</title>
+  <meta name="description" content="About the NBA Lineup & Matchup Lab: what it does, the data and models behind it, and how it was tested.">
+  <link rel="stylesheet" href="css/style.css">
+  <style>
+    main.doc > * { max-width: 880px; }
+    .doc h2.sec { margin-top: 34px; }
+    .doc p, .doc li { color: #d6d6d6; }
+    .doc ul { padding-left: 20px; }
+    .doc li { margin: 4px 0; }
+    .doc td.hi { color: var(--text); font-weight: 500; }
+    .callout { background: var(--slate); padding: 12px 16px; margin: 14px 0; }
+    .callout b { font: 600 16px var(--cond); letter-spacing: .05em; text-transform: uppercase; display: block; margin-bottom: 4px; }
+    .missing { color: var(--muted); font-style: italic; }
+  </style>
+</head>
+<body>
+  <nav id="nav"></nav>
+  <main class="doc">
+    <div class="scorebar">
+      <div class="side team">NBA</div>
+      <div class="title">About the lab<small id="season"></small></div>
+    </div>
+    <p class="lede">The lab answers two coaching questions for any team and opponent: which five players should be on the floor, and who should guard whom. It's built from every possession of the last four NBA seasons, and every model behind it was tested on a season it never saw.</p>
+
+    <h2 class="sec">What's behind it</h2>
+    <ul>
+      <li><b>Play-by-play and matchup tracking data</b> from NBA.com for every regular-season game since 2023-24, checked game by game against the official box scores.</li>
+      <li><b>RAPM</b> (regularized adjusted plus-minus), which rates every player on offense (O-RAPM) and defense (D-RAPM) by how the scoreboard moves with him on the floor, after accounting for his teammates and opponents.</li>
+      <li><b>A matchup model</b> that predicts how many points a given scorer produces against a given defender, including pairs that have never faced each other, and accounts for size.</li>
+      <li><b>An optimizer</b> that tests every five-man combination from your roster against the opponent's five and finds the best defensive assignment for each.</li>
+    </ul>
+
+    <h2 class="sec">Data coverage</h2>
+    <div id="coverage"></div>
+
+    <h2 class="sec">How it was tested</h2>
+    <p>Every model was trained on earlier seasons and scored on a later season it never saw. Player ratings were compared with raw plus-minus on full games:</p>
+    <div id="rapm-val"></div>
+    <p>Adding the matchup model on top of RAPM improved game-level predictions on the held-out season further:</p>
+    <div id="cal"></div>
+
+    <h2 class="sec">What it found</h2>
+    <div class="callout"><b>Lineups beat assignments</b>Who you put on the floor matters far more than exactly who guards whom. Swapping two assignments usually moves net rating by tenths of a point per 100 possessions; changing the lineup moves it by several points.</div>
+    <ul>
+      <li>One-on-one defense is a real, measurable skill: knowing the defender improves predictions of how much his man scores.</li>
+      <li>Size mismatches in either direction cost the defense points.</li>
+      <li>Elite rim protectors often look average one-on-one, because their value comes from help defense. That's why defenders are ranked by overall points saved, and why the Players page flags the gaps.</li>
+    </ul>
+
+    <h2 class="sec">Limitations</h2>
+    <ul>
+      <li>Assignments are treated as fixed one-on-one matchups. Switching and help defense are only partly captured.</li>
+      <li>Matchup tracking is camera-based and gets noisy on switches.</li>
+      <li>Players with few possessions stay close to average until the data says otherwise, so early-season numbers move a lot.</li>
+      <li>Fatigue, foul trouble and minutes limits aren't modeled. Rankings are for a single stretch of play, not a full rotation.</li>
+    </ul>
+
+    <p>New here? See <a href="guide.html">How to use</a>.</p>
+  </main>
+  <footer id="foot"></footer>
+  <script type="module" src="js/about.js"></script>
+</body>
+</html>

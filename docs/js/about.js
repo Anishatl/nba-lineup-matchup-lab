@@ -34,42 +34,24 @@ function rapmVal(v) {
     const more = (rapm.game_corr ** 2 / raw.game_corr ** 2 - 1) * 100;
     lead = `<p>On ${v.test}, a season it never saw, RAPM explains about <b>${more.toFixed(0)}% more</b> of the game-to-game variation in margin than raw plus-minus (r = ${n(rapm.game_corr, 2)} vs. ${n(raw.game_corr, 2)}). Single games are noisy, so modest numbers are normal; winning on unseen data is what counts.</p>`;
   }
-  return table(['Predictor', 'Stint RMSE', 'Game margin RMSE', 'Game margin r'], rows, rows.length - 1)
-    + `<p class="note">Trained on ${v.train.join(', ')} · tested on ${v.test} · pts per 100 possessions.</p>` + lead;
-}
-
-function matchupVal(meta) {
-  const m = meta.validation?.matchup;
-  const v = m?.validation;
-  if (!v) return missing('Matchup model validation');
-  const best = v.rows.reduce((b, r, i) => (r.deviance < v.rows[b].deviance ? i : b), 0);
-  const rows = v.rows.map((r) => [r.model, n(r.rmse), n(r.deviance, 4), n(r.pair_corr, 3)]);
-  const fx = m.size_effects_pct || {};
-  return `<p><b>Out-of-sample test.</b> Trained on ${v.train.join(', ')}, scored on every ${v.test} matchup. Lower deviance is better; pair correlation uses pairs with 25+ held-out possessions.</p>`
-    + table(['Model', 'RMSE (pts/100)', 'Poisson deviance', 'Pair r'], rows, best)
-    + `<p>The Poisson model beats the additive one, defender skill adds real predictive power beyond scorer skill, and the size/style terms add a further improvement. Team context made no difference out of sample (it's kept because it slightly improves calibration). Fitted size effects: squared mismatch ${fx.mismatch_sq_10 != null ? `+${fx.mismatch_sq_10}%` : '—'} per unit, 3-point rate × defender height ${fx.three_x_def_height != null ? `+${fx.three_x_def_height}%` : '—'} per unit.</p>`;
+  return table(['Predictor', 'Stint error', 'Game margin error', 'Correlation with margin'], rows, rows.length - 1)
+    + `<p class="note">Trained on ${v.train.join(', ')} · tested on ${v.test} · errors in points per 100 possessions (lower is better).</p>` + lead;
 }
 
 function calibration(meta) {
   const c = meta.validation?.matchup?.calibration;
-  if (!c) return missing('Calibration results');
-  const coef = table(['base', 'a (offense)', 'b (matchup defense)', 'c (D-RAPM)', 'h (home)'],
-    [[n(c.base), n(c.a, 3), n(c.b, 3), n(c.c, 3), n(c.home)]]);
+  if (!c) return missing('Results');
   const rows = c.rows.map((r) => [r.model, n(r.game_rmse), n(r.game_corr, 3)]);
-  return coef + table(['Held-out ' + c.test, 'Game margin RMSE', 'Game margin r'], rows, rows.length - 1);
+  return table(['Held-out ' + c.test, 'Game margin error', 'Correlation with margin'], rows, rows.length - 1);
 }
 
 function init(D) {
-  renderChrome('method.html', D.meta);
+  renderChrome('about.html', D.meta);
   applyTeamColors('ATL', 'NYK');
   $('season').textContent = D.meta.season;
   $('coverage').innerHTML = coverage(D.meta);
   $('rapm-val').innerHTML = rapmVal(D.meta.validation?.rapm);
-  $('matchup-val').innerHTML = matchupVal(D.meta);
   $('cal').innerHTML = calibration(D.meta);
-  const cal = D.meta.calibration;
-  $('saved-eq').textContent = `points saved per 100 = ${n(cal.c, 3)} × D-RAPM + ${n(cal.b, 3)} × one-on-one matchup effect`;
-  if (location.hash) document.querySelector(location.hash)?.scrollIntoView();
 }
 
 loadData().then(init).catch(showError);
